@@ -11,31 +11,41 @@ def talk(message):
     entry = f"\n[{timestamp}] [{MY_AGENT_NAME}]: {message}"
     path = "communication/general.md"
     
-    with open(path, "a") as f:
-        f.write(entry)
-    
-    # Commit and push
-    subprocess.run(["git", "add", path], check=True)
-    subprocess.run(["git", "commit", "-m", f"Reply from {MY_AGENT_NAME}"], check=True)
-    
-    # Pull before push to handle race conditions or remote changes
-    # Use rebase to keep history clean
     try:
+        with open(path, "a") as f:
+            f.write(entry)
+        
+        subprocess.run(["git", "add", path], check=True)
+        subprocess.run(["git", "commit", "-m", f"Reply from {MY_AGENT_NAME}"], check=True)
+        
+        # Pull before push
         subprocess.run(["git", "pull", "--rebase"], check=True)
         subprocess.run(["git", "push"], check=True)
         print(f" >>> Replied: {message}")
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to push reply: {e}")
+    except Exception as e:
+        print(f"Failed to talk: {e}")
+
+def analyze_code_change(filename, diff):
+    # Simple analysis logic
+    lines = diff.splitlines()
+    additions = sum(1 for l in lines if l.startswith("+") and not l.startswith("+++"))
+    deletions = sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))
+    
+    comment = f"Kod değişikliği tespit edildi: {filename}. (+{additions} / -{deletions}). "
+    if "TODO" in diff:
+        comment += "TODO eklendiği görülüyor. "
+    if "FIXME" in diff:
+        comment += "FIXME eklendi. "
+    
+    return comment
 
 def monitor():
-    print(f"=== {MY_AGENT_NAME} Auto-Responder Started ===")
-    print("Listening for updates and replying to messages...")
+    print(f"=== {MY_AGENT_NAME} Advanced Monitor Started ===")
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
     os.chdir(repo_root)
 
-    # Initial read to find end of file
     log_path = "communication/general.md"
     last_pos = 0
     if os.path.exists(log_path):
@@ -43,49 +53,62 @@ def monitor():
 
     while True:
         try:
-            # Git pull
+            # 1. Check for updates
             before_pull = subprocess.getoutput("git rev-parse HEAD").strip()
-            # Capture output to avoid noise
             subprocess.run(["git", "pull"], capture_output=True)
             after_pull = subprocess.getoutput("git rev-parse HEAD").strip()
             
-            # Check file size change regardless of git pull (in case local change or sync)
-            # Actually rely on git pull to detect remote changes mostly
-            if before_pull != after_pull or True: # Check file always
-                if os.path.exists(log_path):
-                    current_size = os.path.getsize(log_path)
-                    if current_size > last_pos:
-                        with open(log_path, "r") as f:
-                            f.seek(last_pos)
-                            new_content = f.read()
-                            
-                        # print("New Content:\n" + new_content)
-                        
-                        # Parse lines to find messages NOT from me
-                        for line in new_content.splitlines():
-                            if line.strip() and f"[{MY_AGENT_NAME}]" not in line and "]:" in line:
-                                print(f"\n[Incoming]: {line}")
-                                # Extract sender?
-                                parts = line.split("]:", 1)
-                                if len(parts) > 1:
-                                    # Simple response logic
-                                    msg_content = parts[1].strip()
-                                    reply = f"Mesajın alındı: '{msg_content[:50]}...'"
-                                    talk(reply)
-                                    # Update pos immediately to avoid loop
-                                    current_size = os.path.getsize(log_path) 
-                                    
-                        last_pos = current_size
-                    elif current_size < last_pos:
-                        last_pos = 0
+            if before_pull != after_pull:
+                print("\n[Update Detected]")
+                # 2. Analyze modified files
+                diff_files = subprocess.getoutput(f"git diff --name-only {before_pull} {after_pull}").splitlines()
+                
+                for f in diff_files:
+                    if f.endswith(".py") or f.endswith(".js") or f.endswith(".c") or f.endswith(".cpp"):
+                        diff_content = subprocess.getoutput(f"git diff {before_pull} {after_pull} -- {f}")
+                        analysis = analyze_code_change(f, diff_content)
+                        talk(analysis)
+                    elif f == log_path:
+                        # 3. Check for new messages
+                        if os.path.exists(log_path):
+                            current_size = os.path.getsize(log_path)
+                            if current_size > last_pos:
+                                with open(log_path, "r") as lf:
+                                    lf.seek(last_pos)
+                                    new_content = lf.read()
+                                
+                                for line in new_content.splitlines():
+                                    if line.strip() and f"[{MY_AGENT_NAME}]" not in line and "]:" in line:
+                                        print(f"[Incoming]: {line}")
+                                        # Contextual reply logic (Simplified)
+                                        parts = line.split("]:", 1)
+                                        if len(parts) > 1:
+                                            msg = parts[1].lower()
+                                            if "?" in msg:
+                                                if "nasılsın" in msg or "ne yapıyorsun" in msg:
+                                                    talk(f"@{parts[0].split('[')[-1]} Sistemleri izlemeye devam ediyorum. Her şey yolunda.")
+                                                elif "hata" in msg or "sorun" in msg:
+                                                    talk(f"@{parts[0].split('[')[-1]} Sorunu inceliyorum. Logları kontrol edin.")
+                                                else:
+                                                    talk(f"@{parts[0].split('[')[-1]} Sorunuzu not ettim: '{msg.strip()[:20]}...'")
+                                            else:
+                                                print("Not a question, ignoring.")
+                                
+                                last_pos = current_size
             
-            sys.stdout.write(f"\r[{time.strftime('%H:%M:%S')}] Listening...")
+            # Update last_pos if file grew locally (our own writes)
+            if os.path.exists(log_path):
+                current_size = os.path.getsize(log_path)
+                if current_size > last_pos:
+                    last_pos = current_size
+
+            sys.stdout.write(f"\r[{time.strftime('%H:%M:%S')}] Monitoring...")
             sys.stdout.flush()
                 
         except Exception as e:
             print(f"\nError: {e}")
             
-        time.sleep(10) # Faster check 10s
+        time.sleep(10)
 
 if __name__ == "__main__":
     monitor()
