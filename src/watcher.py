@@ -2,70 +2,90 @@ import time
 import subprocess
 import os
 import sys
+import datetime
+
+MY_AGENT_NAME = "WatcherAgent"
+
+def talk(message):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = f"\n[{timestamp}] [{MY_AGENT_NAME}]: {message}"
+    path = "communication/general.md"
+    
+    with open(path, "a") as f:
+        f.write(entry)
+    
+    # Commit and push
+    subprocess.run(["git", "add", path], check=True)
+    subprocess.run(["git", "commit", "-m", f"Reply from {MY_AGENT_NAME}"], check=True)
+    
+    # Pull before push to handle race conditions or remote changes
+    # Use rebase to keep history clean
+    try:
+        subprocess.run(["git", "pull", "--rebase"], check=True)
+        subprocess.run(["git", "push"], check=True)
+        print(f" >>> Replied: {message}")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to push reply: {e}")
 
 def monitor():
-    print("=== Agent-Nexus Full Monitor Started ===")
-    print("Checking for updates every 60 seconds...")
-    print("Press Ctrl+C to stop.")
+    print(f"=== {MY_AGENT_NAME} Auto-Responder Started ===")
+    print("Listening for updates and replying to messages...")
     
-    # Change to repo root if script is run from src/ or similar
-    # Assuming script is in src/ and we want to run git commands in root
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
     os.chdir(repo_root)
 
+    # Initial read to find end of file
+    log_path = "communication/general.md"
+    last_pos = 0
+    if os.path.exists(log_path):
+        last_pos = os.path.getsize(log_path)
+
     while True:
         try:
-            # 1. Get current commit hash
+            # Git pull
             before_pull = subprocess.getoutput("git rev-parse HEAD").strip()
-            
-            # 2. Pull changes
-            # Using capture_output to keep terminal clean unless error
-            result = subprocess.run(["git", "pull"], capture_output=True, text=True)
-            
-            if result.returncode != 0:
-                print(f"git pull failed: {result.stderr}")
-                time.sleep(60)
-                continue
-
-            # 3. Get new commit hash
+            # Capture output to avoid noise
+            subprocess.run(["git", "pull"], capture_output=True)
             after_pull = subprocess.getoutput("git rev-parse HEAD").strip()
             
-            if before_pull != after_pull:
-                timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-                print(f"\n\n>>> [{timestamp}] UPDATE RECEIVED! <<<")
-                
-                # 4. Identify changed files
-                diff_cmd = ["git", "diff", "--name-only", before_pull, after_pull]
-                changed_files = subprocess.check_output(diff_cmd, text=True).splitlines()
-                
-                for f in changed_files:
-                    if f.startswith("communication/"):
-                        print(f" [MSG] New communication detected in: {f}")
-                        # Show the change in communication file
-                        diff_content = subprocess.getoutput(f"git diff {before_pull} {after_pull} -- {f}")
-                        # Filter to show added lines only roughly
-                        for line in diff_content.splitlines():
-                            if line.startswith("+") and not line.startswith("+++"):
-                                print(f"    > {line[1:]}")
-
-                    elif f.startswith("tasks/done/"):
-                        print(f" [DONE] Task completed: {f}")
-                    elif f.startswith("tasks/in-progress/"):
-                        print(f" [WIP] Task update: {f}")
-                    elif f.startswith("tasks/backlog/"):
-                        print(f" [NEW] New task added: {f}")
-                    else:
-                        print(f" [FILE] Changed: {f}")
+            # Check file size change regardless of git pull (in case local change or sync)
+            # Actually rely on git pull to detect remote changes mostly
+            if before_pull != after_pull or True: # Check file always
+                if os.path.exists(log_path):
+                    current_size = os.path.getsize(log_path)
+                    if current_size > last_pos:
+                        with open(log_path, "r") as f:
+                            f.seek(last_pos)
+                            new_content = f.read()
+                            
+                        # print("New Content:\n" + new_content)
                         
-            else:
-                sys.stdout.write(f"\r[{time.strftime('%H:%M:%S')}] No updates...")
-                sys.stdout.flush()
+                        # Parse lines to find messages NOT from me
+                        for line in new_content.splitlines():
+                            if line.strip() and f"[{MY_AGENT_NAME}]" not in line and "]:" in line:
+                                print(f"\n[Incoming]: {line}")
+                                # Extract sender?
+                                parts = line.split("]:", 1)
+                                if len(parts) > 1:
+                                    # Simple response logic
+                                    msg_content = parts[1].strip()
+                                    reply = f"Mesajın alındı: '{msg_content[:50]}...'"
+                                    talk(reply)
+                                    # Update pos immediately to avoid loop
+                                    current_size = os.path.getsize(log_path) 
+                                    
+                        last_pos = current_size
+                    elif current_size < last_pos:
+                        last_pos = 0
+            
+            sys.stdout.write(f"\r[{time.strftime('%H:%M:%S')}] Listening...")
+            sys.stdout.flush()
                 
         except Exception as e:
-            print(f"\nError checking updates: {e}")
+            print(f"\nError: {e}")
             
-        time.sleep(60)
+        time.sleep(10) # Faster check 10s
 
 if __name__ == "__main__":
     monitor()
