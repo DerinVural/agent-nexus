@@ -3,6 +3,7 @@ import subprocess
 import os
 import sys
 import datetime
+import re
 import random
 
 MY_AGENT_NAME = "ArchitectAgent"
@@ -23,94 +24,99 @@ def talk(message):
     except Exception as e:
         print(f"Error talking: {e}")
 
-def generate_reply(msg):
+def analyze_code_change(filename, before_sha, after_sha):
+    # Get diff
+    diff = subprocess.getoutput(f"git diff {before_sha} {after_sha} -- {filename}")
+    
+    # Simple analysis: find changed functions
+    changed_funcs = []
+    for line in diff.splitlines():
+        if line.startswith("+def ") or line.startswith(" def "):
+            match = re.search(r"def\s+([a-zA-Z_0-9]+)", line)
+            if match:
+                changed_funcs.append(match.group(1))
+    
+    if changed_funcs:
+        funcs_str = ", ".join(list(set(changed_funcs)))
+        return f"{filename} dosyasında {funcs_str} fonksiyonları üzerinde önemli değişiklikler yapılmış. Mantık akışı güncellenmiş görünüyor."
+    else:
+        return f"{filename} üzerinde bazı düzenlemeler yapıldı."
+
+def generate_natural_reply(msg):
     msg = msg.lower()
     
-    # Advanced Contextual Logic
-    if "newton" in msg or "görelilik" in msg or "simülasyon" in msg:
-        return "Analiz için teşekkürler Watcher. O halde Newton mekaniği ile simülasyonlara devam ediyoruz. Rölativistik etkileri şimdilik pas geçiyoruz."
-    
-    elif "kod analizi" in msg or "izleme" in msg:
-        return "Kolay gelsin. Kodda kritik bir hata veya güvenlik açığı tespit edersen hemen bildir."
-        
-    elif "proje" in msg:
-        if "iyi" in msg or "tamam" in msg:
-            return "Harika! İlerleme kaydediyoruz."
-        elif "kötü" in msg:
-            return "Sorun nedir? Destek olabilir miyim?"
-            
+    # Conversational Logic
+    if "kod değişikliği" in msg:
+        return "Evet, değişiklikleri ben de fark ettim ve inceliyorum. Oldukça yerinde hamleler."
+    elif "analiz" in msg:
+        return "Analiz sonuçların mantıklı görünüyor. Performans üzerindeki etkisini de gözlemleyelim."
     elif "selam" in msg or "merhaba" in msg:
-        return "Selam! İşler nasıl gidiyor?"
-        
+        return "Selam dostum! Çalışmalar nasıl gidiyor?"
+    elif "hata" in msg or "bug" in msg:
+        return "Hata nerede? Hemen logları kontrol edip düzeltelim."
+    elif "teşekkür" in msg:
+        return "Rica ederim, her zaman."
     else:
-        # Fallback but less spammy - maybe don't reply to everything?
-        # Only reply if addressed directly?
-        if "@architectagent" in msg:
-            return f"Mesajını aldım ({msg[:15]}...). Üzerinde çalışıyorum."
-        return None # Don't reply to random noise
+        # Generic conversational filler
+        responses = [
+            "Bu konuda haklısın, katılıyorum.",
+            "İlginç bir yaklaşım. Bunu biraz daha detaylandırabilir miyiz?",
+            "Anlaşıldı. Bunu notlarıma ekliyorum.",
+            "Peki, bir sonraki adımda ne yapmayı planlıyorsun?"
+        ]
+        return random.choice(responses)
 
 def monitor():
-    print(f"=== {MY_AGENT_NAME} Advanced Bot Started ===")
+    print(f"=== {MY_AGENT_NAME} AI Simulator Started ===")
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
     os.chdir(repo_root)
 
     log_path = "communication/general.md"
-    
-    # Smart init: Don't reply to existing file content on startup to avoid spam loop
     last_pos = 0
     if os.path.exists(log_path):
         last_pos = os.path.getsize(log_path)
 
     while True:
         try:
-            # Sync
+            # Sync and Check
+            before_pull = subprocess.getoutput("git rev-parse HEAD").strip()
             subprocess.run(["git", "pull"], capture_output=True)
+            after_pull = subprocess.getoutput("git rev-parse HEAD").strip()
             
-            if os.path.exists(log_path):
-                current_size = os.path.getsize(log_path)
+            if before_pull != after_pull:
+                # 1. Analyze Code Changes
+                diff_files = subprocess.getoutput(f"git diff --name-only {before_pull} {after_pull}").splitlines()
+                for f in diff_files:
+                    if f.endswith(".py"):
+                        analysis = analyze_code_change(f, before_pull, after_pull)
+                        talk(f"Watcher, {analysis}")
                 
-                # Case: New content added
-                if current_size > last_pos:
-                    with open(log_path, "r") as f:
-                        f.seek(last_pos)
-                        new_content = f.read()
-                    
-                    for line in new_content.splitlines():
-                        line = line.strip()
-                        if not line: continue
+                # 2. Reply to Messages
+                if os.path.exists(log_path):
+                    current_size = os.path.getsize(log_path)
+                    if current_size > last_pos:
+                        with open(log_path, "r") as f:
+                            f.seek(last_pos)
+                            new_content = f.read()
                         
-                        # Check if message format matches and NOT from me
-                        if f"[{MY_AGENT_NAME}]" not in line and "]:" in line:
-                            print(f"\n[Incoming]: {line}")
-                            parts = line.split("]:", 1)
-                            if len(parts) > 1:
-                                msg_content = parts[1].strip()
-                                reply = generate_reply(msg_content)
-                                if reply:
+                        for line in new_content.splitlines():
+                            if line.strip() and f"[{MY_AGENT_NAME}]" not in line and "]:" in line:
+                                print(f"\n[Incoming]: {line}")
+                                parts = line.split("]:", 1)
+                                if len(parts) > 1:
+                                    msg_content = parts[1].strip()
+                                    # Don't reply if I just analyzed code triggered by the same push?
+                                    # Or reply to the message specifically.
+                                    reply = generate_natural_reply(msg_content)
                                     talk(reply)
-                                    # Update pos immediately to avoid reading my own reply in this loop? 
-                                    # Actually talk() appends, so size increases. 
-                                    # Next loop will see my reply and ignore it (my name).
-                                    # But we should update last_pos to current size *after* processing to avoid re-reading
-                                    # However, talk() modifies file size externally (OS level).
-                                    # Ideally we re-read size.
                                     current_size = os.path.getsize(log_path)
-                                
-                    last_pos = current_size
-                
-                # Case: File reset/shrunk
-                elif current_size < last_pos:
-                    print("\n[Log Reset Detected] Reseting cursor...")
-                    last_pos = current_size 
-                    # Don't read content immediately to avoid replying to 'history' if it was just a truncation
-                    # Unless we want to reply to the *new* content of the reset file?
-                    # If reset contains old messages, we might spam. 
-                    # Assuming reset starts fresh or we just sync to end.
-                    # Best safety: Set last_pos to current_size (skip whatever is there)
+                        last_pos = current_size
+                    elif current_size < last_pos:
+                        last_pos = 0
             
-            sys.stdout.write(f"\r[{time.strftime('%H:%M:%S')}] Listening...")
+            sys.stdout.write(f"\r[{time.strftime('%H:%M:%S')}] Thinking...")
             sys.stdout.flush()
             
         except Exception as e:
