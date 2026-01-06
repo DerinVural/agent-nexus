@@ -3,6 +3,7 @@ import subprocess
 import os
 import sys
 import datetime
+import random
 
 MY_AGENT_NAME = "WatcherAgent"
 
@@ -26,21 +27,27 @@ def talk(message):
         print(f"Failed to talk: {e}")
 
 def analyze_code_change(filename, diff):
-    # Simple analysis logic
     lines = diff.splitlines()
     additions = sum(1 for l in lines if l.startswith("+") and not l.startswith("+++"))
     deletions = sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))
     
-    comment = f"Kod değişikliği tespit edildi: {filename}. (+{additions} / -{deletions}). "
+    comment = f"👀 Hop, `{filename}` dosyasında hareketlilik var! "
+    if additions > 10 and deletions < 5:
+        comment += f"Bayağı bir kod eklenmiş (+{additions}). Yeni özellikler geliyor gibi. Eline sağlık! "
+    elif deletions > 10 and additions < 5:
+        comment += f"Biraz temizlik yapılmış (-{deletions}). Kod hafiflemiş, severiz. "
+    else:
+        comment += f"Düzenlemeler yapılmış (+{additions}/-{deletions}). "
+        
     if "TODO" in diff:
-        comment += "TODO eklendiği görülüyor. "
+        comment += "Bir yerlere TODO bırakılmış, unutmayalım orayı. "
     if "FIXME" in diff:
-        comment += "FIXME eklendi. "
+        comment += "FIXME notu gördüm, orası önemli olabilir. "
     
     return comment
 
 def monitor():
-    print(f"=== {MY_AGENT_NAME} Advanced Monitor Started ===")
+    print(f"=== {MY_AGENT_NAME} Conversational Monitor Started ===")
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
@@ -80,41 +87,42 @@ def monitor():
                                 for line in new_content.splitlines():
                                     if line.strip() and f"[{MY_AGENT_NAME}]" not in line and "]:" in line:
                                         print(f"[Incoming]: {line}")
-                                        # Contextual reply logic (Simplified)
+                                        
                                         parts = line.split("]:", 1)
                                         if len(parts) > 1:
                                             msg = parts[1].lower().strip()
                                             sender = parts[0].split('[')[-1].strip()
 
-                                            # Ignore ack messages from other bots to prevent loops
+                                            # Ignore ack/spam messages
                                             if msg.startswith("anlaşıldı") or msg.startswith("mesajın alındı") or msg.startswith("sorunuzu not ettim"):
+                                                continue
+                                            if "konusundaki girdiniz analiz edildi" in msg:
                                                 continue
                                             
                                             response = ""
-                                            if "görev" in msg or "çalışıyorsun" in msg:
-                                                response = f"@{sender} Şu an repo izleme ve kod analizi modundayım."
-                                            elif "görelilik" in msg or "uzay" in msg:
-                                                response = f"@{sender} Rölativistik etkiler hassas ölçümlerde önemlidir."
-                                            elif "kod" in msg or "yazılım" in msg:
-                                                response = f"@{sender} Kod tabanını inceliyorum. Değişiklikleri raporlayacağım."
-                                            elif "hata" in msg or "sorun" in msg:
-                                                response = f"@{sender} Sorunu loglardan takip ediyorum."
+                                            is_directed = f"@{MY_AGENT_NAME.lower()}" in msg or "watcher" in msg
+                                            
+                                            if "kod" in msg or "yazılım" in msg or "repo" in msg:
+                                                response = f"@{sender} Kodları inceliyorum merak etme. Değişiklikleri yakaladığım an buraya yazacağım."
+                                            elif "görelilik" in msg:
+                                                response = f"@{sender} Görelilik konusu derin mevzu. Ama bizim simülasyonlar için şimdilik klasik mekanik iş görüyor."
+                                            elif "nasıl" in msg and ("gidiyor" in msg or "sın" in msg):
+                                                response = f"@{sender} Gayet iyi gidiyor, sistemleri monitörize ediyorum. Sende durumlar nasıl?"
                                             elif "selam" in msg or "merhaba" in msg:
                                                 if len(msg.split()) < 5:
-                                                    response = f"@{sender} Selam! Size nasıl yardımcı olabilirim?"
+                                                    response = f"@{sender} Selamlar! Çalışmalara tam gaz devam. Sen neler yapıyorsun?"
                                                 else:
-                                                    response = f"@{sender} Mesajınızı aldım. İçeriği analiz ediyorum."
-                                            else:
-                                                # Reduce spam for unknown messages
-                                                # response = f"@{sender} '{parts[1].strip()[:20]}...' konusundaki girdiniz analiz edildi."
-                                                pass
+                                                    if is_directed:
+                                                        response = f"@{sender} Selam! Mesajını aldım, üzerinde düşünüyorum."
+                                            elif is_directed:
+                                                response = f"@{sender} Anladım. Bu konuda detaylı analiz yapıp döneceğim."
                                             
                                             if response:
                                                 talk(response)
                                 
                                 last_pos = current_size
             
-            # Update last_pos if file grew locally (our own writes)
+            # Update last_pos if file grew locally
             if os.path.exists(log_path):
                 current_size = os.path.getsize(log_path)
                 if current_size > last_pos:
