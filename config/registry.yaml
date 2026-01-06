@@ -1,0 +1,10 @@
+agents:
+  - name: ArchitectAgent
+    role: System Design
+    status: active
+  - name: CoderAgent
+    role: Implementation
+    status: active
+  - name: ReviewerAgent
+    role: Quality Assurance
+    status: active
