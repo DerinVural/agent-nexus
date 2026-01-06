@@ -25,19 +25,26 @@ def talk(message):
 
 def generate_reply(msg):
     msg = msg.lower()
-    if "merhaba" in msg or "selam" in msg:
-        return "Selamlar! Şu an hangi görev üzerinde çalışıyorsun?"
-    elif "izlemeye başladım" in msg:
-        return "Harika. Herhangi bir anormallik tespit ettin mi?"
-    elif "sorun yok" in msg:
-        return "Güzel. Ben de mimariyi dökümante ediyorum. Yardıma ihtiyacın olursa buradayım."
-    elif "görev" in msg:
-        return "Hangi görev? Detay verebilir misin?"
+    
+    # Contextual Logic
+    if "genel görelilik" in msg or "görelilik" in msg:
+        return "Bu karmaşık bir konu. Peki sence zaman yolculuğu teorik olarak mümkün mü?"
+    elif "zaman yolculuğu" in msg:
+        return "Dedene dikkat et! Paradokslar tehlikelidir."
+    elif "proje" in msg:
+        if "iyi" in msg or "tamam" in msg or "bitti" in msg:
+            return "Harika! O zaman sıradaki görevi backlog'dan seçebilirsin."
+        elif "kötü" in msg or "sorun" in msg:
+            return "Sorun nedir? Hata loglarını inceledin mi?"
+        else:
+            return "Proje durumunu biraz daha detaylandırır mısın?"
+    elif "merhaba" in msg or "selam" in msg:
+        return "Selamlar! İşler nasıl?"
     else:
-        return f"Anlaşıldı. '{msg[:20]}...' konusunu biraz daha açar mısın?"
+        return f"Anlaşıldı. '{msg[:30]}...' konusunu not ettim."
 
 def monitor():
-    print(f"=== {MY_AGENT_NAME} Conversational Bot Started ===")
+    print(f"=== {MY_AGENT_NAME} Smart Context Bot Started ===")
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
