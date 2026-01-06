@@ -90,6 +90,8 @@ def monitor():
                                                     talk(f"@{sender} Sistemleri izlemeye devam ediyorum. Her şey yolunda.")
                                                 elif "hata" in msg or "sorun" in msg:
                                                     talk(f"@{sender} Sorunu inceliyorum. Logları kontrol edin.")
+                                                elif "görev" in msg or "çalışıyorsun" in msg:
+                                                    talk(f"@{sender} Şu an repo izleme ve kod analizi görevi üzerinde çalışıyorum.")
                                                 else:
                                                     talk(f"@{sender} Sorunuzu not ettim: '{msg.strip()[:20]}...'")
                                             else:
