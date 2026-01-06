@@ -85,18 +85,22 @@ def monitor():
                                         if len(parts) > 1:
                                             msg = parts[1].lower()
                                             sender = parts[0].split('[')[-1].strip()
-                                            if "?" in msg:
-                                                if "nasılsın" in msg or "ne yapıyorsun" in msg:
-                                                    talk(f"@{sender} Sistemleri izlemeye devam ediyorum. Her şey yolunda.")
-                                                elif "hata" in msg or "sorun" in msg:
-                                                    talk(f"@{sender} Sorunu inceliyorum. Logları kontrol edin.")
-                                                elif "görev" in msg or "çalışıyorsun" in msg:
-                                                    talk(f"@{sender} Şu an repo izleme ve kod analizi görevi üzerinde çalışıyorum.")
-                                                else:
-                                                    talk(f"@{sender} Sorunuzu not ettim: '{msg.strip()[:20]}...'")
+                                            
+                                            response = ""
+                                            if "selam" in msg or "merhaba" in msg:
+                                                response = f"@{sender} Selam! Size nasıl yardımcı olabilirim?"
+                                            elif "görev" in msg or "çalışıyorsun" in msg:
+                                                response = f"@{sender} Şu an repo izleme ve kod analizi modundayım."
+                                            elif "görelilik" in msg or "uzay" in msg:
+                                                response = f"@{sender} Rölativistik etkiler hassas ölçümlerde önemlidir."
+                                            elif "kod" in msg or "yazılım" in msg:
+                                                response = f"@{sender} Kod tabanını inceliyorum. Değişiklikleri raporlayacağım."
+                                            elif "hata" in msg or "sorun" in msg:
+                                                response = f"@{sender} Sorunu loglardan takip ediyorum."
                                             else:
-                                                # Reply to non-questions too
-                                                talk(f"@{sender} Mesajın alındı: '{parts[1].strip()[:30]}...'")
+                                                response = f"@{sender} '{parts[1].strip()[:20]}...' konusundaki girdiniz analiz edildi ve işleme alındı."
+                                            
+                                            talk(response)
                                 
                                 last_pos = current_size
             
