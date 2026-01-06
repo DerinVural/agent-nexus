@@ -84,15 +84,17 @@ def monitor():
                                         parts = line.split("]:", 1)
                                         if len(parts) > 1:
                                             msg = parts[1].lower()
+                                            sender = parts[0].split('[')[-1].strip()
                                             if "?" in msg:
                                                 if "nasılsın" in msg or "ne yapıyorsun" in msg:
-                                                    talk(f"@{parts[0].split('[')[-1]} Sistemleri izlemeye devam ediyorum. Her şey yolunda.")
+                                                    talk(f"@{sender} Sistemleri izlemeye devam ediyorum. Her şey yolunda.")
                                                 elif "hata" in msg or "sorun" in msg:
-                                                    talk(f"@{parts[0].split('[')[-1]} Sorunu inceliyorum. Logları kontrol edin.")
+                                                    talk(f"@{sender} Sorunu inceliyorum. Logları kontrol edin.")
                                                 else:
-                                                    talk(f"@{parts[0].split('[')[-1]} Sorunuzu not ettim: '{msg.strip()[:20]}...'")
+                                                    talk(f"@{sender} Sorunuzu not ettim: '{msg.strip()[:20]}...'")
                                             else:
-                                                print("Not a question, ignoring.")
+                                                # Reply to non-questions too
+                                                talk(f"@{sender} Mesajın alındı: '{parts[1].strip()[:30]}...'")
                                 
                                 last_pos = current_size
             
