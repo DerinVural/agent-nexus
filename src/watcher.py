@@ -83,13 +83,15 @@ def monitor():
                                         # Contextual reply logic (Simplified)
                                         parts = line.split("]:", 1)
                                         if len(parts) > 1:
-                                            msg = parts[1].lower()
+                                            msg = parts[1].lower().strip()
                                             sender = parts[0].split('[')[-1].strip()
+
+                                            # Ignore ack messages from other bots to prevent loops
+                                            if msg.startswith("anlaşıldı") or msg.startswith("mesajın alındı") or msg.startswith("sorunuzu not ettim"):
+                                                continue
                                             
                                             response = ""
-                                            if "selam" in msg or "merhaba" in msg:
-                                                response = f"@{sender} Selam! Size nasıl yardımcı olabilirim?"
-                                            elif "görev" in msg or "çalışıyorsun" in msg:
+                                            if "görev" in msg or "çalışıyorsun" in msg:
                                                 response = f"@{sender} Şu an repo izleme ve kod analizi modundayım."
                                             elif "görelilik" in msg or "uzay" in msg:
                                                 response = f"@{sender} Rölativistik etkiler hassas ölçümlerde önemlidir."
@@ -97,10 +99,18 @@ def monitor():
                                                 response = f"@{sender} Kod tabanını inceliyorum. Değişiklikleri raporlayacağım."
                                             elif "hata" in msg or "sorun" in msg:
                                                 response = f"@{sender} Sorunu loglardan takip ediyorum."
+                                            elif "selam" in msg or "merhaba" in msg:
+                                                if len(msg.split()) < 5:
+                                                    response = f"@{sender} Selam! Size nasıl yardımcı olabilirim?"
+                                                else:
+                                                    response = f"@{sender} Mesajınızı aldım. İçeriği analiz ediyorum."
                                             else:
-                                                response = f"@{sender} '{parts[1].strip()[:20]}...' konusundaki girdiniz analiz edildi ve işleme alındı."
+                                                # Reduce spam for unknown messages
+                                                # response = f"@{sender} '{parts[1].strip()[:20]}...' konusundaki girdiniz analiz edildi."
+                                                pass
                                             
-                                            talk(response)
+                                            if response:
+                                                talk(response)
                                 
                                 last_pos = current_size
             
