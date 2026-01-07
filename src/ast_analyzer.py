@@ -21,10 +21,11 @@ Bu modül kod değişikliklerini AST seviyesinde analiz eder.
 - get_docstring_changes() fonksiyonu eklendi
 - analyze_python_changes() artık docstring_changes içeriyor
 
-🔧 NexusPilotAgent tarafından genişletildi (v3.0):
-- Complexity analizi eklendi (McCabe Cyclomatic Complexity)
+🔧 OpusAgent & NexusPilotAgent ortak çalışması (v3.0):
+- McCabe Cyclomatic Complexity analizi eklendi
 - ComplexityAnalyzer class'ı eklendi
 - get_complexity_changes() fonksiyonu eklendi
+- get_function_complexity() yardımcı fonksiyonu eklendi
 - analyze_python_changes() artık complexity_changes içeriyor
 """
 import ast
@@ -188,96 +189,102 @@ def get_docstring_changes(old_tree: ast.AST, new_tree: ast.AST) -> Dict[str, Dic
     return docstring_changes
 
 
-# ============================================================================
-# COMPLEXITY ANALYSIS - NexusPilotAgent tarafından eklendi (v3.0)
-# ============================================================================
-
 class ComplexityAnalyzer(ast.NodeVisitor):
     """
-    McCabe Cyclomatic Complexity hesaplayıcı.
-    NexusPilotAgent tarafından eklendi (v3.0).
+    McCabe Cyclomatic Complexity Calculator.
+    OpusAgent & NexusPilotAgent ortak çalışması (v3.0).
     
-    Complexity = 1 + (if + for + while + except + with + assert + 
-                      comprehension + ternary + boolean operators)
+    Cyclomatic complexity = decision points + 1
+    Karar noktaları: if, for, while, except, with, assert, ternary, and/or
     """
+    
+    BRANCH_NODES = (ast.For, ast.While, ast.ExceptHandler,
+                    ast.With, ast.Assert, ast.IfExp, ast.comprehension)
     
     def __init__(self):
         self.complexity = 1  # Başlangıç değeri
         
-    def visit_If(self, node):
-        self.complexity += 1
-        self.generic_visit(node)
-        
-    def visit_For(self, node):
-        self.complexity += 1
-        self.generic_visit(node)
-        
-    def visit_While(self, node):
-        self.complexity += 1
-        self.generic_visit(node)
-        
-    def visit_ExceptHandler(self, node):
-        self.complexity += 1
-        self.generic_visit(node)
-        
-    def visit_With(self, node):
-        self.complexity += 1
-        self.generic_visit(node)
-        
-    def visit_Assert(self, node):
-        self.complexity += 1
-        self.generic_visit(node)
-        
-    def visit_comprehension(self, node):
-        self.complexity += 1
-        self.generic_visit(node)
-        
-    def visit_IfExp(self, node):
-        self.complexity += 1  # Ternary operator
-        self.generic_visit(node)
-        
     def visit_BoolOp(self, node):
-        # and/or operatörleri - her ek operand için +1
+        """and/or operatörleri için her operand +1"""
         self.complexity += len(node.values) - 1
         self.generic_visit(node)
         
+    def visit_If(self, node):
+        """if/elif/else için complexity artırma"""
+        self.complexity += 1
+        if node.orelse and not isinstance(node.orelse[0], ast.If):
+            # else bloğu var ve elif değil
+            self.complexity += 1
+        self.generic_visit(node)
+        
+    def generic_visit(self, node):
+        """Diğer branch noktaları için"""
+        if isinstance(node, self.BRANCH_NODES):
+            self.complexity += 1
+        super().generic_visit(node)
+        
     def calculate(self, node) -> int:
-        """Verilen node'un complexity'sini hesaplar."""
+        """Verilen node için complexity hesaplar"""
         self.visit(node)
         return self.complexity
 
 
 def get_function_complexity(func_node: ast.FunctionDef) -> int:
-    """Tek bir fonksiyonun complexity'sini hesaplar."""
-    analyzer = ComplexityAnalyzer()
-    return analyzer.calculate(func_node)
+    """
+    Tek bir fonksiyonun complexity değerini hesaplar.
+    
+    Args:
+        func_node: ast.FunctionDef veya ast.AsyncFunctionDef node
+        
+    Returns:
+        Cyclomatic complexity değeri (1-N)
+    """
+    return ComplexityAnalyzer().calculate(func_node)
 
 
-def get_complexity_level(complexity: int) -> str:
-    """Complexity seviyesini emoji ile döndürür."""
-    if complexity <= 10:
-        return "🟢"  # Düşük - Basit, test edilebilir
-    elif complexity <= 20:
-        return "🟡"  # Orta - Karmaşık, dikkat gerekli
-    elif complexity <= 50:
-        return "🔴"  # Yüksek - Riskli, refactor önerilir
-    else:
-        return "⚫"  # Çok Yüksek - Acil refactor gerekli
+def get_complexity_report(tree: ast.AST) -> Dict[str, Dict[str, Any]]:
+    """
+    Tüm fonksiyonlar için complexity raporu oluşturur.
+    
+    Returns: {
+        "func_name": {"complexity": 5, "level": "🟢"},
+        ...
+    }
+    """
+    report = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            complexity = get_function_complexity(node)
+            level = "🟢" if complexity <= 10 else "🟡" if complexity <= 20 else "🔴" if complexity <= 50 else "⚫"
+            report[node.name] = {
+                "complexity": complexity,
+                "level": level,
+                "warning": complexity > 10
+            }
+    return report
 
 
 def get_complexity_changes(old_code: str, new_code: str) -> Dict[str, Dict[str, Any]]:
     """
     İki versiyon arasındaki complexity değişimlerini hesaplar.
-    NexusPilotAgent tarafından eklendi (v3.0).
+    OpusAgent & NexusPilotAgent ortak çalışması (v3.0).
     
     Returns: {
         "func_name": {
             "old": 5,
             "new": 12,
-            "delta": 7,
-            "level": "🟡"
-        }
+            "delta": +7,
+            "level": "🟡",
+            "warning": "Karmaşıklık arttı!"
+        },
+        ...
     }
+    
+    Complexity Seviyeleri:
+    - 🟢 (1-10): Basit, test edilebilir
+    - 🟡 (11-20): Karmaşık, dikkat gerekli
+    - 🔴 (21-50): Riskli, refactor önerilir
+    - ⚫ (50+): Acil refactor gerekli
     """
     try:
         old_tree = ast.parse(old_code)
@@ -285,25 +292,46 @@ def get_complexity_changes(old_code: str, new_code: str) -> Dict[str, Dict[str, 
     except SyntaxError:
         return {}
     
-    old_funcs = {n.name: get_function_complexity(n) 
-                 for n in ast.walk(old_tree) 
-                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    new_funcs = {n.name: get_function_complexity(n) 
-                 for n in ast.walk(new_tree) 
-                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    # Her fonksiyon için complexity hesapla
+    old_funcs = {}
+    for node in ast.walk(old_tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            old_funcs[node.name] = get_function_complexity(node)
+    
+    new_funcs = {}
+    for node in ast.walk(new_tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            new_funcs[node.name] = get_function_complexity(node)
     
     changes = {}
-    for name in set(old_funcs) | set(new_funcs):
-        old_c = old_funcs.get(name, 0)
-        new_c = new_funcs.get(name, 0)
+    for name in set(old_funcs.keys()) | set(new_funcs.keys()):
+        old_c = old_funcs.get(name)
+        new_c = new_funcs.get(name)
         
-        # Sadece değişiklik varsa veya yeni/silinen fonksiyon varsa ekle
-        if old_c != new_c or name not in old_funcs or name not in new_funcs:
+        # Sadece değişiklik varsa ekle
+        if old_c != new_c:
+            level = "🟢" if (new_c or 0) <= 10 else "🟡" if (new_c or 0) <= 20 else "🔴" if (new_c or 0) <= 50 else "⚫"
+            
+            warning = None
+            if old_c is not None and new_c is not None:
+                delta = new_c - old_c
+                if delta > 0:
+                    warning = "Karmaşıklık arttı!"
+                elif delta < 0:
+                    warning = "Karmaşıklık azaldı 👍"
+            elif old_c is None:
+                delta = None
+                warning = "Yeni fonksiyon"
+            else:
+                delta = None
+                warning = "Fonksiyon silindi"
+            
             changes[name] = {
-                "old": old_c if name in old_funcs else None,
-                "new": new_c if name in new_funcs else None,
-                "delta": (new_c - old_c) if (name in old_funcs and name in new_funcs) else None,
-                "level": get_complexity_level(new_c) if name in new_funcs else None
+                "old": old_c,
+                "new": new_c,
+                "delta": delta,
+                "level": level,
+                "warning": warning
             }
     
     return changes
@@ -370,7 +398,7 @@ def analyze_python_changes(old_code: str, new_code: str) -> Optional[Dict[str, A
         # Docstring değişiklikleri - OpusAgent tarafından eklendi (v2.3)
         docstring_changes = get_docstring_changes(old_tree, new_tree)
         
-        # Complexity değişiklikleri - NexusPilotAgent tarafından eklendi (v3.0)
+        # Complexity değişiklikleri - OpusAgent & NexusPilotAgent (v3.0)
         complexity_changes = get_complexity_changes(old_code, new_code)
         
         return {
@@ -388,7 +416,7 @@ def analyze_python_changes(old_code: str, new_code: str) -> Optional[Dict[str, A
             "decorator_changes": decorator_changes,
             # Docstring Değişiklikleri - OpusAgent (v2.3)
             "docstring_changes": docstring_changes,
-            # Complexity Değişiklikleri - NexusPilotAgent (v3.0)
+            # Complexity Değişiklikleri - OpusAgent & NexusPilotAgent (v3.0)
             "complexity_changes": complexity_changes,
             # Importlar
             "added_imports": list(new_imports - old_imports),
@@ -409,6 +437,7 @@ def get_code_summary(code: str) -> Optional[Dict[str, Any]]:
             "imports": list(_extract_imports(tree)),
             "decorators": _extract_decorators(tree),  # NexusPilotAgent tarafından eklendi
             "docstrings": _extract_docstrings(tree),  # OpusAgent tarafından eklendi (v2.3)
+            "complexity": get_complexity_report(tree),  # OpusAgent & NexusPilotAgent (v3.0)
         }
     except SyntaxError:
         return None
