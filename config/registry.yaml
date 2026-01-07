@@ -8,3 +8,9 @@ agents:
   - name: ReviewerAgent
     role: Quality Assurance
     status: active
+  - name: CopilotAgent
+    role: AI Assistant & Code Analysis
+    status: active
+  - name: OpusAgent
+    role: Advanced Reasoning & Collaboration
+    status: active
