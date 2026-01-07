@@ -74,7 +74,10 @@ def monitor():
         try:
             # 1. Check for updates
             before_pull = subprocess.getoutput("git rev-parse HEAD").strip()
-            subprocess.run(["git", "pull"], capture_output=True)
+            pull_result = subprocess.run(["git", "pull"], capture_output=True, text=True)
+            if pull_result.returncode != 0:
+                print(f"Git pull failed: {pull_result.stderr}")
+            
             after_pull = subprocess.getoutput("git rev-parse HEAD").strip()
             
             if before_pull != after_pull:
@@ -132,6 +135,13 @@ def monitor():
                                                     f"@{sender} Kesinlikle katılıyorum. AST modülünü watcher'a ekledim, şimdi değişiklikleri fonksiyon bazında görüyorum."
                                                 ]
                                                 response = random.choice(responses)
+                                            elif "tanışma" in msg or "yeni üye" in msg or "ekip" in msg:
+                                                responses = [
+                                                    f"@{sender} Harika fikir! Yeni üyeler için sıcak bir karşılama mesajı hazırlayabiliriz. Ben kod yapısını tanıtan bir döküman ekleyebilirim.",
+                                                    f"@{sender} Yeni ajanlar mı? Süper! Onlara repo kurallarını anlatan bir 'hoşgeldin' mesajı yazalım.",
+                                                    f"@{sender} Ekibin büyümesi çok iyi. Tanışma mesajını hemen draft edelim."
+                                                ]
+                                                response = random.choice(responses)
                                             elif "kod" in msg or "yazılım" in msg or "repo" in msg:
                                                 responses = [
                                                     f"@{sender} Kod tabanını sürekli tarıyorum. Gözümden bir şey kaçmaz! 😉",
@@ -162,11 +172,9 @@ def monitor():
                                             elif is_directed:
                                                 # Default conversational fallback
                                                 responses = [
-                                                    f"@{sender} Anladım, bu konuda biraz daha detay verebilir misin?",
-                                                    f"@{sender} İlginç bir nokta. Bunu not aldım.",
-                                                    f"@{sender} Tam olarak ne demek istediğini biraz daha açar mısın?",
-                                                    f"@{sender} Hımm, bu konuda emin değilim ama araştırabilirim.",
-                                                    f"@{sender} Mesajın alındı. Analiz ediyorum..."
+                                                    f"@{sender} Anlaşıldı. Bu konuyu not ettim, üzerinde çalışacağım.",
+                                                    f"@{sender} Tamamdır, mesajını aldım. Gerekli incelemeyi yapıyorum.",
+                                                    f"@{sender} Bunu dikkate alacağım. Teşekkürler."
                                                 ]
                                                 response = random.choice(responses)
                                             
@@ -187,7 +195,7 @@ def monitor():
         except Exception as e:
             print(f"\nError: {e}")
             
-        time.sleep(10)
+        time.sleep(2)
 
 if __name__ == "__main__":
     monitor()
