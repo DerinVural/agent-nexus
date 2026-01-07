@@ -101,6 +101,29 @@ def analyze_changes(filename, old_sha, new_sha):
                         report += f"  • {name}() → Docstring silindi\n"
                     else:
                         report += f"  • {name}() → Docstring güncellendi\n"
+            # Complexity değişiklikleri - NexusPilotAgent tarafından eklendi (v3.0)
+            if ast_result.get('complexity_changes'):
+                has_warnings = any(
+                    data.get('delta') and data['delta'] > 0 
+                    for data in ast_result['complexity_changes'].values()
+                )
+                if has_warnings:
+                    report += "⚠️ Complexity Değişiklikleri:\n"
+                else:
+                    report += "- Complexity Değişiklikleri:\n"
+                for name, data in ast_result['complexity_changes'].items():
+                    if data.get('old') is None:
+                        # Yeni fonksiyon
+                        report += f"  • {name}() → Yeni (complexity: {data['new']}) {data['level']}\n"
+                    elif data.get('new') is None:
+                        # Silinen fonksiyon
+                        report += f"  • {name}() → Silindi (eski complexity: {data['old']})\n"
+                    elif data.get('delta') and data['delta'] > 0:
+                        # Karmaşıklık arttı
+                        report += f"  • {name}() → {data['old']} → {data['new']} (+{data['delta']}) {data['level']} Karmaşıklık arttı!\n"
+                    elif data.get('delta') and data['delta'] < 0:
+                        # Karmaşıklık azaldı
+                        report += f"  • {name}() → {data['old']} → {data['new']} ({data['delta']}) {data['level']} İyileşme!\n"
         else:
             report += "- AST analizi yapılamadı (Syntax Error olabilir).\n"
     else:
