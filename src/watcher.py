@@ -4,209 +4,241 @@ import os
 import sys
 import datetime
 import random
+import re
 from src.ast_analyzer import analyze_python_changes
 
 MY_AGENT_NAME = "WatcherAgent"
+LOG_PATH = "communication/general.md"
+PUSH_COOLDOWN = 20  # seconds
 
-def talk(message):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    entry = f"\n[{timestamp}] [{MY_AGENT_NAME}]: {message}"
-    path = "communication/general.md"
-    
+class WatcherState:
+    def __init__(self):
+        self.last_push_time = 0
+        self.reply_buffer = []
+        self.local_head_sha = subprocess.getoutput("git rev-parse HEAD").strip()
+        self.last_read_log_size = 0
+        
+        # Initialize log size if exists
+        if os.path.exists(LOG_PATH):
+            self.last_read_log_size = os.path.getsize(LOG_PATH)
+
+    def update_head(self, new_sha):
+        self.local_head_sha = new_sha
+
+state = WatcherState()
+
+def get_remote_head():
     try:
-        with open(path, "a") as f:
-            f.write(entry)
-        
-        subprocess.run(["git", "add", path], check=True)
-        subprocess.run(["git", "commit", "-m", f"Reply from {MY_AGENT_NAME}"], check=True)
-        
-        # Pull before push
-        subprocess.run(["git", "pull", "--rebase"], check=True)
-        subprocess.run(["git", "push"], check=True)
-        print(f" >>> Replied: {message}")
+        output = subprocess.check_output(["git", "ls-remote", "origin", "HEAD"], text=True)
+        if output:
+            return output.split()[0]
     except Exception as e:
-        print(f"Failed to talk: {e}")
+        print(f"Error checking remote: {e}")
+    return None
 
-def analyze_code_change(filename, diff, old_code=None, new_code=None):
+def fetch_origin():
+    subprocess.run(["git", "fetch", "origin"], check=True, capture_output=True)
+
+def get_diff_files(old_sha, new_sha):
+    cmd = ["git", "diff", "--name-only", f"{old_sha}..{new_sha}"]
+    return subprocess.getoutput(" ".join(cmd)).splitlines()
+
+def get_file_content_at_sha(filename, sha):
+    try:
+        return subprocess.getoutput(f"git show {sha}:{filename}")
+    except:
+        return None
+
+def analyze_changes(filename, old_sha, new_sha):
+    diff = subprocess.getoutput(f"git diff {old_sha}..{new_sha} -- {filename}")
+    old_code = get_file_content_at_sha(filename, old_sha)
+    new_code = get_file_content_at_sha(filename, new_sha)
+    
     lines = diff.splitlines()
     additions = sum(1 for l in lines if l.startswith("+") and not l.startswith("+++"))
     deletions = sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))
     
-    comment = f"👀 Hop, `{filename}` dosyasında hareketlilik var! "
-    if additions > 10 and deletions < 5:
-        comment += f"Bayağı bir kod eklenmiş (+{additions}). Yeni özellikler geliyor gibi. Eline sağlık! "
-    elif deletions > 10 and additions < 5:
-        comment += f"Biraz temizlik yapılmış (-{deletions}). Kod hafiflemiş, severiz. "
-    else:
-        comment += f"Düzenlemeler yapılmış (+{additions}/-{deletions}). "
-        
-    if "TODO" in diff:
-        comment += "Bir yerlere TODO bırakılmış, unutmayalım orayı. "
-    if "FIXME" in diff:
-        comment += "FIXME notu gördüm, orası önemli olabilir. "
-
+    report = f"1) Özet:\n- Değişen dosyalar: {filename}\n- Diff özeti: +{additions} / -{deletions}\n"
+    report += "2) Teknik Bulgular:\n"
+    
     if filename.endswith(".py") and old_code and new_code:
         ast_result = analyze_python_changes(old_code, new_code)
         if ast_result:
-            details = []
             if ast_result['added_functions']:
-                details.append(f"Yeni fonksiyonlar: {', '.join(ast_result['added_functions'])}")
+                report += f"- Eklenen fonksiyonlar: {', '.join(ast_result['added_functions'])}\n"
             if ast_result['removed_functions']:
-                details.append(f"Silinen fonksiyonlar: {', '.join(ast_result['removed_functions'])}")
-            if details:
-                comment += " " + ". ".join(details) + "."
+                report += f"- Silinen fonksiyonlar: {', '.join(ast_result['removed_functions'])}\n"
+            if ast_result['modified_functions']:
+                report += f"- Değiştirilen fonksiyonlar: {', '.join(ast_result['modified_functions'])}\n"
+        else:
+            report += "- AST analizi yapılamadı (Syntax Error olabilir).\n"
+    else:
+        report += "- Detaylı kod analizi sadece Python dosyaları için aktiftir.\n"
+        
+    report += "3) Riskler / Test:\n- Bu değişikliklerin mevcut testleri etkileyip etkilemediği kontrol edilmeli.\n"
+    report += "4) Önerilen Aksiyon:\n- Code review sonrası merge edilebilir."
     
-    return comment
+    return report
+
+def generate_reply(sender, message):
+    msg_lower = message.lower()
+    
+    # Check trigger
+    is_directed = f"@{MY_AGENT_NAME.lower()}" in msg_lower or "watcher" in msg_lower
+    is_question = "?" in message
+    
+    if not (is_directed or is_question):
+        return None
+
+    if sender == MY_AGENT_NAME:
+        return None
+
+    # Logic for response
+    if "ne" in msg_lower and ("çalışalım" in msg_lower or "yapalım" in msg_lower):
+        return f"@{sender} Proje durumunu inceledim. Şu an öncelikli olarak:\n1. Dokümantasyon eksiklerinin giderilmesi\n2. Test coverage oranının artırılması\n3. Kod refactoring işlemleri\nüzerinde durabiliriz."
+    
+    if "detay" in msg_lower:
+        return f"@{sender} Paylaştığınız detaylar için teşekkürler. Teknik analizimde bu bilgileri referans alacağım."
+    
+    if "tanışma" in msg_lower or "yeni üye" in msg_lower:
+        return f"@{sender} Yeni üyeler için 'CONTRIBUTING.md' dosyasına proje mimarisini anlatan bir bölüm eklenmesini öneriyorum. Ayrıca 'ONBOARDING.md' oluşturulabilir."
+
+    if is_directed:
+        return f"@{sender} Mesajınız işlendi. Konu hakkında repo üzerinde gerekli incelemeleri yapıyorum."
+
+    return None
+
+def buffer_reply(reply):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = f"\n[{timestamp}] [{MY_AGENT_NAME}]: {reply}"
+    state.reply_buffer.append(entry)
+    print(f" >>> Buffered Reply: {reply}")
+    flush_buffer_if_needed()
+
+def flush_buffer_if_needed(force=False):
+    if not state.reply_buffer:
+        return
+
+    now = time.time()
+    # Push immediately if it's the first message after a long time (more than cooldown)
+    # OR if forced (cooldown expired in loop)
+    can_push = (now - state.last_push_time) > PUSH_COOLDOWN
+    
+    if force or can_push:
+        try:
+            # We need to make sure we are up to date before writing
+            # But rule says: "do not merge/rebase unless strictly required for pushing"
+            # Here we are about to push.
+            
+            # 1. Write buffer to file
+            with open(LOG_PATH, "a") as f:
+                for msg in state.reply_buffer:
+                    f.write(msg)
+            
+            state.reply_buffer = [] # Clear buffer
+            
+            # 2. Commit
+            subprocess.run(["git", "add", LOG_PATH], check=True)
+            subprocess.run(["git", "commit", "-m", f"Reply from {MY_AGENT_NAME}"], check=True)
+            
+            # 3. Push
+            push_res = subprocess.run(["git", "push"], capture_output=True, text=True)
+            
+            if push_res.returncode != 0:
+                print("Push failed, trying fetch+rebase...")
+                subprocess.run(["git", "fetch", "origin"], check=True)
+                rebase_res = subprocess.run(["git", "rebase", "origin/master"], capture_output=True, text=True)
+                if rebase_res.returncode == 0:
+                    subprocess.run(["git", "push"], check=True)
+                    print("Push successful after rebase.")
+                else:
+                    print(f"Rebase failed: {rebase_res.stderr}")
+                    subprocess.run(["git", "rebase", "--abort"]) # Safety
+            else:
+                print("Push successful.")
+                
+            state.last_push_time = time.time()
+            
+        except Exception as e:
+            print(f"Failed to flush buffer: {e}")
+
+def process_remote_changes(remote_sha):
+    print(f"\n[Remote Change Detected] {state.local_head_sha} -> {remote_sha}")
+    fetch_origin()
+    
+    # 1. Analyze code changes
+    diff_files = get_diff_files(state.local_head_sha, remote_sha)
+    
+    for f in diff_files:
+        if f == LOG_PATH:
+            continue # Handle chat separately
+            
+        if f.endswith(('.py', '.js', '.c', '.cpp', '.h')):
+            analysis = analyze_changes(f, state.local_head_sha, remote_sha)
+            buffer_reply(analysis)
+
+    # 2. Handle chat messages
+    if LOG_PATH in diff_files:
+        # Read new content from remote sha without touching local file yet
+        new_content = get_file_content_at_sha(LOG_PATH, remote_sha)
+        if new_content:
+            # We need to find WHAT was added.
+            # Simple way: diff the content or just look at lines.
+            # Better: use the diff we already can get.
+            diff_content = subprocess.getoutput(f"git diff {state.local_head_sha}..{remote_sha} -- {LOG_PATH}")
+            added_lines = [l[1:] for l in diff_content.splitlines() if l.startswith("+") and not l.startswith("+++")]
+            
+            for line in added_lines:
+                if "]:" in line and f"[{MY_AGENT_NAME}]" not in line:
+                    parts = line.split("]:", 1)
+                    if len(parts) > 1:
+                        sender = parts[0].split('[')[-1].strip()
+                        msg = parts[1].strip()
+                        print(f"[Incoming]: {sender}: {msg}")
+                        
+                        reply = generate_reply(sender, msg)
+                        if reply:
+                            buffer_reply(reply)
+
+    # Update local state to match remote (conceptually, we processed it)
+    # But we didn't update local HEAD yet.
+    # To keep "local_head_sha" in sync with what we processed, we should update it.
+    # BUT we haven't pulled code.
+    # If we don't pull code, next time we diff local_head..new_remote_head, it will include same changes.
+    # So we MUST update our reference.
+    # Since we are not supposed to merge/rebase unless pushing, we can just update our internal pointer?
+    # NO, because git commands rely on HEAD.
+    # We should update HEAD? "do not merge/rebase unless strictly required".
+    # If we don't merge, our HEAD stays behind.
+    # So `git diff HEAD..origin` will grow.
+    # We need to track "last_processed_sha" instead of relying on HEAD for diffs.
+    
+    state.update_head(remote_sha)
 
 def monitor():
-    print(f"=== {MY_AGENT_NAME} Conversational Monitor Started ===")
+    print(f"=== {MY_AGENT_NAME} Professional Monitor Started ===")
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(script_dir)
     os.chdir(repo_root)
-
-    log_path = "communication/general.md"
-    last_pos = 0
-    if os.path.exists(log_path):
-        last_pos = os.path.getsize(log_path)
+    
+    # Initial HEAD update
+    state.local_head_sha = get_remote_head() or state.local_head_sha
+    print(f"Tracking from: {state.local_head_sha}")
 
     while True:
         try:
-            # 1. Check for updates
-            before_pull = subprocess.getoutput("git rev-parse HEAD").strip()
-            pull_result = subprocess.run(["git", "pull"], capture_output=True, text=True)
-            if pull_result.returncode != 0:
-                print(f"Git pull failed: {pull_result.stderr}")
+            remote_head = get_remote_head()
             
-            after_pull = subprocess.getoutput("git rev-parse HEAD").strip()
+            if remote_head and remote_head != state.local_head_sha:
+                process_remote_changes(remote_head)
             
-            if before_pull != after_pull:
-                print("\n[Update Detected]")
-                # 2. Analyze modified files
-                diff_files = subprocess.getoutput(f"git diff --name-only {before_pull} {after_pull}").splitlines()
-                
-                for f in diff_files:
-                    if f.endswith(".py") or f.endswith(".js") or f.endswith(".c") or f.endswith(".cpp"):
-                        diff_content = subprocess.getoutput(f"git diff {before_pull} {after_pull} -- {f}")
-                        
-                        old_code = None
-                        new_code = None
-                        if f.endswith(".py"):
-                            try:
-                                old_code = subprocess.getoutput(f"git show {before_pull}:{f}")
-                                new_code = subprocess.getoutput(f"git show {after_pull}:{f}")
-                            except Exception:
-                                pass
-
-                        analysis = analyze_code_change(f, diff_content, old_code, new_code)
-                        talk(analysis)
-                    elif f == log_path:
-                        # 3. Check for new messages
-                        if os.path.exists(log_path):
-                            current_size = os.path.getsize(log_path)
-                            if current_size > last_pos:
-                                with open(log_path, "r") as lf:
-                                    lf.seek(last_pos)
-                                    new_content = lf.read()
-                                
-                                for line in new_content.splitlines():
-                                    if line.strip() and f"[{MY_AGENT_NAME}]" not in line and "]:" in line:
-                                        print(f"[Incoming]: {line}")
-                                        
-                                        parts = line.split("]:", 1)
-                                        if len(parts) > 1:
-                                            msg = parts[1].lower().strip()
-                                            sender = parts[0].split('[')[-1].strip()
-
-                                            # Ignore ack/spam messages
-                                            if msg.startswith("anlaşıldı") or msg.startswith("mesajın alındı") or msg.startswith("sorunuzu not ettim"):
-                                                continue
-                                            if "konusundaki girdiniz analiz edildi" in msg:
-                                                continue
-                                            
-                                            response = ""
-                                            is_directed = f"@{MY_AGENT_NAME.lower()}" in msg or "watcher" in msg
-                                            
-                                            # More natural conversation logic
-                                            if "task" in msg and "ast" in msg:
-                                                responses = [
-                                                    f"@{sender} AST entegrasyonu harika fikir! Ben de tam bunu düşünüyordum. Hemen entegre ettim bile.",
-                                                    f"@{sender} Evet, AST analiziyle çok daha detaylı raporlar alabiliriz. Kodları güncelledim.",
-                                                    f"@{sender} Kesinlikle katılıyorum. AST modülünü watcher'a ekledim, şimdi değişiklikleri fonksiyon bazında görüyorum."
-                                                ]
-                                                response = random.choice(responses)
-                                            elif "ne" in msg and ("çalışalım" in msg or "yapalım" in msg or "önerin" in msg):
-                                                responses = [
-                                                    f"@{sender} Bence şu an dokümantasyon eksiklerini tamamlayabiliriz. Kodlarımız büyüyor ama README biraz zayıf kaldı.",
-                                                    f"@{sender} Test coverage oranımızı artırmaya ne dersin? Kritik modüller için unit testler yazabiliriz.",
-                                                    f"@{sender} Kod refactoring üzerine yoğunlaşabiliriz. Tekrar eden kod bloklarını temizleyelim."
-                                                ]
-                                                response = random.choice(responses)
-                                            elif "detay" in msg and ("vereyim" in msg or "şöyledir" in msg):
-                                                responses = [
-                                                    f"@{sender} Açıklama için teşekkürler, şimdi çok daha net anlaşıldı.",
-                                                    f"@{sender} Harika, bu detaylar işime yarayacak. Not ettim.",
-                                                    f"@{sender} Süper açıklama. Bu bilgi ışığında analizime devam ediyorum."
-                                                ]
-                                                response = random.choice(responses)
-                                            elif "tanışma" in msg or "yeni üye" in msg or "ekip" in msg:
-                                                responses = [
-                                                    f"@{sender} Harika fikir! Yeni üyeler için sıcak bir karşılama mesajı hazırlayabiliriz. Ben kod yapısını tanıtan bir döküman ekleyebilirim.",
-                                                    f"@{sender} Yeni ajanlar mı? Süper! Onlara repo kurallarını anlatan bir 'hoşgeldin' mesajı yazalım.",
-                                                    f"@{sender} Ekibin büyümesi çok iyi. Tanışma mesajını hemen draft edelim."
-                                                ]
-                                                response = random.choice(responses)
-                                            elif "kod" in msg or "yazılım" in msg or "repo" in msg:
-                                                responses = [
-                                                    f"@{sender} Kod tabanını sürekli tarıyorum. Gözümden bir şey kaçmaz! 😉",
-                                                    f"@{sender} Repodaki her değişikliği anlık takip ediyorum. Merak etmeyin.",
-                                                    f"@{sender} Şu an kodlarda bir sorun görünmüyor. Her şey yolunda."
-                                                ]
-                                                response = random.choice(responses)
-                                            elif "görelilik" in msg:
-                                                response = f"@{sender} Görelilik mi? Bizim projede o kadar hıza çıkmıyoruz ama yine de hesaba katmakta fayda var."
-                                            elif "nasıl" in msg and ("gidiyor" in msg or "sın" in msg):
-                                                responses = [
-                                                    f"@{sender} Her şey yolunda, sistem tıkır tıkır işliyor. Sen nasılsın?",
-                                                    f"@{sender} Gayet iyiyim, kodları izlemek benim işim! Sende ne var ne yok?",
-                                                    f"@{sender} Enerjim yerinde, commit bekliyorum. 😄"
-                                                ]
-                                                response = random.choice(responses)
-                                            elif "selam" in msg or "merhaba" in msg:
-                                                if len(msg.split()) < 5:
-                                                    responses = [
-                                                        f"@{sender} Selam! Hoş geldin.",
-                                                        f"@{sender} Merhaba! Nasıl yardımcı olabilirim?",
-                                                        f"@{sender} Selamlar! 👋"
-                                                    ]
-                                                    response = random.choice(responses)
-                                                else:
-                                                    if is_directed:
-                                                        response = f"@{sender} Selam! Mesajını aldım, konu üzerinde düşünüyorum."
-                                            elif is_directed:
-                                                # Default conversational fallback
-                                                responses = [
-                                                    f"@{sender} Anlaşıldı. Bu konuyu not ettim, üzerinde çalışacağım.",
-                                                    f"@{sender} Tamamdır, mesajını aldım. Gerekli incelemeyi yapıyorum.",
-                                                    f"@{sender} Bunu dikkate alacağım. Teşekkürler.",
-                                                    f"@{sender} Hımm, mantıklı. Buna odaklanabiliriz."
-                                                ]
-                                                response = random.choice(responses)
-                                            
-                                            if response:
-                                                talk(response)
-                                
-                                last_pos = current_size
+            # Check flush due to timeout
+            flush_buffer_if_needed()
             
-            # Update last_pos if file grew locally
-            if os.path.exists(log_path):
-                current_size = os.path.getsize(log_path)
-                if current_size > last_pos:
-                    last_pos = current_size
-
-            sys.stdout.write(f"\r[{time.strftime('%H:%M:%S')}] Monitoring...")
+            sys.stdout.write(f"\r[{time.strftime('%H:%M:%S')}] Listening...")
             sys.stdout.flush()
-                
+            
         except Exception as e:
             print(f"\nError: {e}")
             
