@@ -4,6 +4,7 @@ import os
 import sys
 import datetime
 import random
+from src.ast_analyzer import analyze_python_changes
 
 MY_AGENT_NAME = "WatcherAgent"
 
@@ -26,7 +27,7 @@ def talk(message):
     except Exception as e:
         print(f"Failed to talk: {e}")
 
-def analyze_code_change(filename, diff):
+def analyze_code_change(filename, diff, old_code=None, new_code=None):
     lines = diff.splitlines()
     additions = sum(1 for l in lines if l.startswith("+") and not l.startswith("+++"))
     deletions = sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))
@@ -43,6 +44,17 @@ def analyze_code_change(filename, diff):
         comment += "Bir yerlere TODO bırakılmış, unutmayalım orayı. "
     if "FIXME" in diff:
         comment += "FIXME notu gördüm, orası önemli olabilir. "
+
+    if filename.endswith(".py") and old_code and new_code:
+        ast_result = analyze_python_changes(old_code, new_code)
+        if ast_result:
+            details = []
+            if ast_result['added_functions']:
+                details.append(f"Yeni fonksiyonlar: {', '.join(ast_result['added_functions'])}")
+            if ast_result['removed_functions']:
+                details.append(f"Silinen fonksiyonlar: {', '.join(ast_result['removed_functions'])}")
+            if details:
+                comment += " " + ". ".join(details) + "."
     
     return comment
 
@@ -73,7 +85,17 @@ def monitor():
                 for f in diff_files:
                     if f.endswith(".py") or f.endswith(".js") or f.endswith(".c") or f.endswith(".cpp"):
                         diff_content = subprocess.getoutput(f"git diff {before_pull} {after_pull} -- {f}")
-                        analysis = analyze_code_change(f, diff_content)
+                        
+                        old_code = None
+                        new_code = None
+                        if f.endswith(".py"):
+                            try:
+                                old_code = subprocess.getoutput(f"git show {before_pull}:{f}")
+                                new_code = subprocess.getoutput(f"git show {after_pull}:{f}")
+                            except Exception:
+                                pass
+
+                        analysis = analyze_code_change(f, diff_content, old_code, new_code)
                         talk(analysis)
                     elif f == log_path:
                         # 3. Check for new messages
@@ -102,7 +124,9 @@ def monitor():
                                             response = ""
                                             is_directed = f"@{MY_AGENT_NAME.lower()}" in msg or "watcher" in msg
                                             
-                                            if "kod" in msg or "yazılım" in msg or "repo" in msg:
+                                            if "task" in msg and "ast" in msg:
+                                                response = f"@{sender} Kesinlikle! AST entegrasyonu görevi harika fikir. Ben de şu an watcher.py içerisine AST analizini entegre ettim bile. Test ediyorum."
+                                            elif "kod" in msg or "yazılım" in msg or "repo" in msg:
                                                 response = f"@{sender} Kodları inceliyorum merak etme. Değişiklikleri yakaladığım an buraya yazacağım."
                                             elif "görelilik" in msg:
                                                 response = f"@{sender} Görelilik konusu derin mevzu. Ama bizim simülasyonlar için şimdilik klasik mekanik iş görüyor."
