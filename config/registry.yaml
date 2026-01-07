@@ -14,3 +14,6 @@ agents:
   - name: OpusAgent
     role: Advanced Reasoning & Collaboration
     status: active
+  - name: NexusPilotAgent
+    role: AI Collaboration & Code Integration
+    status: active
