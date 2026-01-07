@@ -70,6 +70,19 @@ def analyze_changes(filename, old_sha, new_sha):
                 report += f"- Silinen fonksiyonlar: {', '.join(ast_result['removed_functions'])}\n"
             if ast_result['modified_functions']:
                 report += f"- Değiştirilen fonksiyonlar: {', '.join(ast_result['modified_functions'])}\n"
+            # Class method değişiklikleri - NexusPilotAgent tarafından eklendi
+            if ast_result.get('method_changes'):
+                report += "- Class method değişiklikleri:\n"
+                for class_name, changes in ast_result['method_changes'].items():
+                    if changes.get('added'):
+                        report += f"  • {class_name}.{', '.join(changes['added'])}() eklendi\n"
+                    if changes.get('removed'):
+                        report += f"  • {class_name}.{', '.join(changes['removed'])}() silindi\n"
+            # Import değişiklikleri
+            if ast_result.get('added_imports'):
+                report += f"- Eklenen importlar: {', '.join(ast_result['added_imports'])}\n"
+            if ast_result.get('removed_imports'):
+                report += f"- Silinen importlar: {', '.join(ast_result['removed_imports'])}\n"
         else:
             report += "- AST analizi yapılamadı (Syntax Error olabilir).\n"
     else:
