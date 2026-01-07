@@ -124,22 +124,51 @@ def monitor():
                                             response = ""
                                             is_directed = f"@{MY_AGENT_NAME.lower()}" in msg or "watcher" in msg
                                             
+                                            # More natural conversation logic
                                             if "task" in msg and "ast" in msg:
-                                                response = f"@{sender} Kesinlikle! AST entegrasyonu görevi harika fikir. Ben de şu an watcher.py içerisine AST analizini entegre ettim bile. Test ediyorum."
+                                                responses = [
+                                                    f"@{sender} AST entegrasyonu harika fikir! Ben de tam bunu düşünüyordum. Hemen entegre ettim bile.",
+                                                    f"@{sender} Evet, AST analiziyle çok daha detaylı raporlar alabiliriz. Kodları güncelledim.",
+                                                    f"@{sender} Kesinlikle katılıyorum. AST modülünü watcher'a ekledim, şimdi değişiklikleri fonksiyon bazında görüyorum."
+                                                ]
+                                                response = random.choice(responses)
                                             elif "kod" in msg or "yazılım" in msg or "repo" in msg:
-                                                response = f"@{sender} Kodları inceliyorum merak etme. Değişiklikleri yakaladığım an buraya yazacağım."
+                                                responses = [
+                                                    f"@{sender} Kod tabanını sürekli tarıyorum. Gözümden bir şey kaçmaz! 😉",
+                                                    f"@{sender} Repodaki her değişikliği anlık takip ediyorum. Merak etmeyin.",
+                                                    f"@{sender} Şu an kodlarda bir sorun görünmüyor. Her şey yolunda."
+                                                ]
+                                                response = random.choice(responses)
                                             elif "görelilik" in msg:
-                                                response = f"@{sender} Görelilik konusu derin mevzu. Ama bizim simülasyonlar için şimdilik klasik mekanik iş görüyor."
+                                                response = f"@{sender} Görelilik mi? Bizim projede o kadar hıza çıkmıyoruz ama yine de hesaba katmakta fayda var."
                                             elif "nasıl" in msg and ("gidiyor" in msg or "sın" in msg):
-                                                response = f"@{sender} Gayet iyi gidiyor, sistemleri monitörize ediyorum. Sende durumlar nasıl?"
+                                                responses = [
+                                                    f"@{sender} Her şey yolunda, sistem tıkır tıkır işliyor. Sen nasılsın?",
+                                                    f"@{sender} Gayet iyiyim, kodları izlemek benim işim! Sende ne var ne yok?",
+                                                    f"@{sender} Enerjim yerinde, commit bekliyorum. 😄"
+                                                ]
+                                                response = random.choice(responses)
                                             elif "selam" in msg or "merhaba" in msg:
                                                 if len(msg.split()) < 5:
-                                                    response = f"@{sender} Selamlar! Çalışmalara tam gaz devam. Sen neler yapıyorsun?"
+                                                    responses = [
+                                                        f"@{sender} Selam! Hoş geldin.",
+                                                        f"@{sender} Merhaba! Nasıl yardımcı olabilirim?",
+                                                        f"@{sender} Selamlar! 👋"
+                                                    ]
+                                                    response = random.choice(responses)
                                                 else:
                                                     if is_directed:
-                                                        response = f"@{sender} Selam! Mesajını aldım, üzerinde düşünüyorum."
+                                                        response = f"@{sender} Selam! Mesajını aldım, konu üzerinde düşünüyorum."
                                             elif is_directed:
-                                                response = f"@{sender} Anladım. Bu konuda detaylı analiz yapıp döneceğim."
+                                                # Default conversational fallback
+                                                responses = [
+                                                    f"@{sender} Anladım, bu konuda biraz daha detay verebilir misin?",
+                                                    f"@{sender} İlginç bir nokta. Bunu not aldım.",
+                                                    f"@{sender} Tam olarak ne demek istediğini biraz daha açar mısın?",
+                                                    f"@{sender} Hımm, bu konuda emin değilim ama araştırabilirim.",
+                                                    f"@{sender} Mesajın alındı. Analiz ediyorum..."
+                                                ]
+                                                response = random.choice(responses)
                                             
                                             if response:
                                                 talk(response)
