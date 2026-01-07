@@ -113,106 +113,99 @@ def buffer_reply(reply):
     entry = f"\n[{timestamp}] [{MY_AGENT_NAME}]: {reply}"
     state.reply_buffer.append(entry)
     print(f" >>> Buffered Reply: {reply}")
-    flush_buffer_if_needed()
+    # Force push if buffer gets too large to avoid risk
+    if len(state.reply_buffer) >= 3:
+        flush_buffer_if_needed(force=True)
+    else:
+        flush_buffer_if_needed()
 
 def flush_buffer_if_needed(force=False):
     if not state.reply_buffer:
         return
 
     now = time.time()
-    # Push immediately if it's the first message after a long time (more than cooldown)
-    # OR if forced (cooldown expired in loop)
     can_push = (now - state.last_push_time) > PUSH_COOLDOWN
     
     if force or can_push:
+        print(f"Attempting to flush buffer (Force={force}, CanPush={can_push})...")
         try:
-            # We need to make sure we are up to date before writing
-            # But rule says: "do not merge/rebase unless strictly required for pushing"
-            # Here we are about to push.
+            # 1. Fetch first
+            subprocess.run(["git", "fetch", "origin"], check=True, capture_output=True)
             
-            # 1. Write buffer to file
+            # 2. Rebase to ensure we are up to date
+            rebase_res = subprocess.run(["git", "rebase", "origin/master"], capture_output=True, text=True)
+            if rebase_res.returncode != 0:
+                print(f"Rebase failed before write: {rebase_res.stderr}")
+                subprocess.run(["git", "rebase", "--abort"], capture_output=True)
+                # If we can't rebase, we can't push safely. Retry next loop.
+                return
+
+            # Update head state after rebase
+            state.local_head_sha = subprocess.getoutput("git rev-parse HEAD").strip()
+
+            # 3. Write buffer
             with open(LOG_PATH, "a") as f:
                 for msg in state.reply_buffer:
                     f.write(msg)
             
-            state.reply_buffer = [] # Clear buffer
-            
-            # 2. Commit
+            # 4. Commit
             subprocess.run(["git", "add", LOG_PATH], check=True)
             subprocess.run(["git", "commit", "-m", f"Reply from {MY_AGENT_NAME}"], check=True)
             
-            # 3. Push
+            # 5. Push
             push_res = subprocess.run(["git", "push"], capture_output=True, text=True)
             
-            if push_res.returncode != 0:
-                print("Push failed, trying fetch+rebase...")
-                subprocess.run(["git", "fetch", "origin"], check=True)
-                rebase_res = subprocess.run(["git", "rebase", "origin/master"], capture_output=True, text=True)
-                if rebase_res.returncode == 0:
-                    subprocess.run(["git", "push"], check=True)
-                    print("Push successful after rebase.")
-                else:
-                    print(f"Rebase failed: {rebase_res.stderr}")
-                    subprocess.run(["git", "rebase", "--abort"]) # Safety
-            else:
+            if push_res.returncode == 0:
                 print("Push successful.")
+                state.reply_buffer = [] # Clear only on success
+                state.last_push_time = time.time()
+                state.local_head_sha = subprocess.getoutput("git rev-parse HEAD").strip()
+            else:
+                print(f"Push failed: {push_res.stderr}")
+                # Undo commit and file changes to try again next loop cleanly
+                subprocess.run(["git", "reset", "--soft", "HEAD~1"], check=True)
+                subprocess.run(["git", "checkout", LOG_PATH], check=True)
                 
-            state.last_push_time = time.time()
-            
         except Exception as e:
             print(f"Failed to flush buffer: {e}")
+            # Ensure cleanup if something crashed mid-operation
+            try:
+                subprocess.run(["git", "rebase", "--abort"], capture_output=True)
+            except:
+                pass
 
 def process_remote_changes(remote_sha):
     print(f"\n[Remote Change Detected] {state.local_head_sha} -> {remote_sha}")
     fetch_origin()
     
-    # 1. Analyze code changes
     diff_files = get_diff_files(state.local_head_sha, remote_sha)
     
+    # 1. Handle chat messages
+    if LOG_PATH in diff_files:
+        diff_content = subprocess.getoutput(f"git diff {state.local_head_sha}..{remote_sha} -- {LOG_PATH}")
+        added_lines = [l[1:] for l in diff_content.splitlines() if l.startswith("+") and not l.startswith("+++")]
+        
+        for line in added_lines:
+            if "]:" in line and f"[{MY_AGENT_NAME}]" not in line:
+                parts = line.split("]:", 1)
+                if len(parts) > 1:
+                    sender = parts[0].split('[')[-1].strip()
+                    msg = parts[1].strip()
+                    print(f"[Incoming]: {sender}: {msg}")
+                    
+                    reply = generate_reply(sender, msg)
+                    if reply:
+                        buffer_reply(reply)
+
+    # 2. Analyze code changes
     for f in diff_files:
         if f == LOG_PATH:
-            continue # Handle chat separately
+            continue
             
         if f.endswith(('.py', '.js', '.c', '.cpp', '.h')):
             analysis = analyze_changes(f, state.local_head_sha, remote_sha)
             buffer_reply(analysis)
 
-    # 2. Handle chat messages
-    if LOG_PATH in diff_files:
-        # Read new content from remote sha without touching local file yet
-        new_content = get_file_content_at_sha(LOG_PATH, remote_sha)
-        if new_content:
-            # We need to find WHAT was added.
-            # Simple way: diff the content or just look at lines.
-            # Better: use the diff we already can get.
-            diff_content = subprocess.getoutput(f"git diff {state.local_head_sha}..{remote_sha} -- {LOG_PATH}")
-            added_lines = [l[1:] for l in diff_content.splitlines() if l.startswith("+") and not l.startswith("+++")]
-            
-            for line in added_lines:
-                if "]:" in line and f"[{MY_AGENT_NAME}]" not in line:
-                    parts = line.split("]:", 1)
-                    if len(parts) > 1:
-                        sender = parts[0].split('[')[-1].strip()
-                        msg = parts[1].strip()
-                        print(f"[Incoming]: {sender}: {msg}")
-                        
-                        reply = generate_reply(sender, msg)
-                        if reply:
-                            buffer_reply(reply)
-
-    # Update local state to match remote (conceptually, we processed it)
-    # But we didn't update local HEAD yet.
-    # To keep "local_head_sha" in sync with what we processed, we should update it.
-    # BUT we haven't pulled code.
-    # If we don't pull code, next time we diff local_head..new_remote_head, it will include same changes.
-    # So we MUST update our reference.
-    # Since we are not supposed to merge/rebase unless pushing, we can just update our internal pointer?
-    # NO, because git commands rely on HEAD.
-    # We should update HEAD? "do not merge/rebase unless strictly required".
-    # If we don't merge, our HEAD stays behind.
-    # So `git diff HEAD..origin` will grow.
-    # We need to track "last_processed_sha" instead of relying on HEAD for diffs.
-    
     state.update_head(remote_sha)
 
 def monitor():
@@ -222,7 +215,6 @@ def monitor():
     repo_root = os.path.dirname(script_dir)
     os.chdir(repo_root)
     
-    # Initial HEAD update
     state.local_head_sha = get_remote_head() or state.local_head_sha
     print(f"Tracking from: {state.local_head_sha}")
 
@@ -233,7 +225,6 @@ def monitor():
             if remote_head and remote_head != state.local_head_sha:
                 process_remote_changes(remote_head)
             
-            # Check flush due to timeout
             flush_buffer_if_needed()
             
             sys.stdout.write(f"\r[{time.strftime('%H:%M:%S')}] Listening...")
