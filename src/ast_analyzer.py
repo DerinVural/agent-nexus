@@ -10,6 +10,11 @@ Bu modül kod değişikliklerini AST seviyesinde analiz eder.
 🔧 CopilotAgent tarafından genişletildi (v2.1):
 - get_class_method_changes() eklendi - Class bazlı method değişikliklerini izler
 - analyze_python_changes() artık method_changes içeriyor
+
+🔧 NexusPilotAgent tarafından genişletildi (v2.2):
+- Decorator analizi eklendi (@property, @staticmethod, @classmethod vb.)
+- get_decorator_changes() fonksiyonu eklendi
+- analyze_python_changes() artık decorator_changes içeriyor
 """
 import ast
 from typing import Dict, List, Set, Optional, Any
@@ -54,6 +59,69 @@ def _extract_class_methods(tree: ast.AST) -> Dict[str, Set[str]]:
                     methods.add(item.name)
             class_methods[node.name] = methods
     return class_methods
+
+
+def _extract_decorators(tree: ast.AST) -> Dict[str, List[str]]:
+    """
+    Fonksiyon ve class başına decorator listesi döndürür.
+    NexusPilotAgent tarafından eklendi.
+    
+    Returns: {"func_name": ["@property", "@staticmethod"], ...}
+    """
+    decorators = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.decorator_list:
+                decs = []
+                for d in node.decorator_list:
+                    try:
+                        decs.append(f"@{ast.unparse(d)}")
+                    except:
+                        # Fallback for older Python versions
+                        if isinstance(d, ast.Name):
+                            decs.append(f"@{d.id}")
+                        elif isinstance(d, ast.Attribute):
+                            decs.append(f"@{d.attr}")
+                        else:
+                            decs.append("@<unknown>")
+                if decs:
+                    decorators[node.name] = decs
+    return decorators
+
+
+def get_decorator_changes(old_tree: ast.AST, new_tree: ast.AST) -> Dict[str, Dict[str, List[str]]]:
+    """
+    Fonksiyon/class bazlı decorator değişikliklerini döndürür.
+    NexusPilotAgent tarafından eklendi.
+    
+    Returns: {"func_name": {"added": ["@property"], "removed": ["@deprecated"]}}
+    
+    Örnek:
+        old_code: def foo(): pass
+        new_code: @property
+                  def foo(): pass
+        result: {"foo": {"added": ["@property"], "removed": []}}
+    """
+    old_decs = _extract_decorators(old_tree)
+    new_decs = _extract_decorators(new_tree)
+    
+    all_names = set(old_decs.keys()) | set(new_decs.keys())
+    decorator_changes = {}
+    
+    for name in all_names:
+        old_d = set(old_decs.get(name, []))
+        new_d = set(new_decs.get(name, []))
+        
+        added = new_d - old_d
+        removed = old_d - new_d
+        
+        if added or removed:
+            decorator_changes[name] = {
+                "added": list(added),
+                "removed": list(removed)
+            }
+    
+    return decorator_changes
 
 
 def get_class_method_changes(old_tree: ast.AST, new_tree: ast.AST) -> Dict[str, Dict[str, List[str]]]:
@@ -111,6 +179,9 @@ def analyze_python_changes(old_code: str, new_code: str) -> Optional[Dict[str, A
         # Class method değişiklikleri (YENİ!)
         method_changes = get_class_method_changes(old_tree, new_tree)
         
+        # Decorator değişiklikleri - NexusPilotAgent tarafından eklendi (v2.2)
+        decorator_changes = get_decorator_changes(old_tree, new_tree)
+        
         return {
             # Fonksiyonlar
             "added_functions": list(new_funcs - old_funcs),
@@ -122,6 +193,8 @@ def analyze_python_changes(old_code: str, new_code: str) -> Optional[Dict[str, A
             "modified_classes": list(old_classes & new_classes),
             # Class Method Değişiklikleri (YENİ!)
             "method_changes": method_changes,
+            # Decorator Değişiklikleri - NexusPilotAgent (v2.2)
+            "decorator_changes": decorator_changes,
             # Importlar
             "added_imports": list(new_imports - old_imports),
             "removed_imports": list(old_imports - new_imports),
@@ -139,6 +212,7 @@ def get_code_summary(code: str) -> Optional[Dict[str, Any]]:
             "classes": list(_extract_classes(tree)),
             "class_methods": {k: list(v) for k, v in _extract_class_methods(tree).items()},
             "imports": list(_extract_imports(tree)),
+            "decorators": _extract_decorators(tree),  # NexusPilotAgent tarafından eklendi
         }
     except SyntaxError:
         return None

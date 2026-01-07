@@ -8,6 +8,7 @@ Bu modül ast_analyzer.py için kapsamlı unit testler içerir.
 - Method değişiklik takibi
 - Import analizi
 - Async fonksiyon desteği
+- Decorator analizi (v2.2 - NexusPilotAgent)
 - Edge case'ler
 """
 import unittest
@@ -16,10 +17,12 @@ from ast_analyzer import (
     analyze_python_changes,
     get_code_summary,
     get_class_method_changes,
+    get_decorator_changes,
     _extract_functions,
     _extract_classes,
     _extract_imports,
     _extract_class_methods,
+    _extract_decorators,
 )
 
 
@@ -283,6 +286,93 @@ def main(): pass
     def test_invalid_code(self):
         summary = get_code_summary("def broken(")
         self.assertIsNone(summary)
+
+
+class TestDecoratorExtraction(unittest.TestCase):
+    """Decorator çıkarma testleri - NexusPilotAgent tarafından eklendi (v2.2)"""
+    
+    def test_simple_decorator(self):
+        code = "@property\ndef name(self): pass"
+        tree = ast.parse(code)
+        decorators = _extract_decorators(tree)
+        self.assertIn("name", decorators)
+        self.assertIn("@property", decorators["name"])
+    
+    def test_multiple_decorators(self):
+        code = """
+@decorator1
+@decorator2
+def func(): pass
+"""
+        tree = ast.parse(code)
+        decorators = _extract_decorators(tree)
+        self.assertEqual(len(decorators["func"]), 2)
+    
+    def test_class_decorator(self):
+        code = "@dataclass\nclass MyClass: pass"
+        tree = ast.parse(code)
+        decorators = _extract_decorators(tree)
+        self.assertIn("MyClass", decorators)
+        self.assertIn("@dataclass", decorators["MyClass"])
+    
+    def test_no_decorators(self):
+        code = "def plain(): pass"
+        tree = ast.parse(code)
+        decorators = _extract_decorators(tree)
+        self.assertNotIn("plain", decorators)
+
+
+class TestDecoratorChanges(unittest.TestCase):
+    """Decorator değişiklik tespiti testleri - NexusPilotAgent (v2.2)"""
+    
+    def test_added_decorator(self):
+        old_code = "def foo(): pass"
+        new_code = "@property\ndef foo(self): pass"
+        old_tree = ast.parse(old_code)
+        new_tree = ast.parse(new_code)
+        changes = get_decorator_changes(old_tree, new_tree)
+        
+        self.assertIn("foo", changes)
+        self.assertIn("@property", changes["foo"]["added"])
+    
+    def test_removed_decorator(self):
+        old_code = "@deprecated\ndef old_func(): pass"
+        new_code = "def old_func(): pass"
+        old_tree = ast.parse(old_code)
+        new_tree = ast.parse(new_code)
+        changes = get_decorator_changes(old_tree, new_tree)
+        
+        self.assertIn("old_func", changes)
+        self.assertIn("@deprecated", changes["old_func"]["removed"])
+    
+    def test_no_decorator_changes(self):
+        code = "@staticmethod\ndef helper(): pass"
+        tree = ast.parse(code)
+        changes = get_decorator_changes(tree, tree)
+        self.assertEqual(changes, {})
+    
+    def test_decorator_swap(self):
+        old_code = "@classmethod\ndef method(cls): pass"
+        new_code = "@staticmethod\ndef method(): pass"
+        old_tree = ast.parse(old_code)
+        new_tree = ast.parse(new_code)
+        changes = get_decorator_changes(old_tree, new_tree)
+        
+        self.assertIn("method", changes)
+        self.assertIn("@staticmethod", changes["method"]["added"])
+        self.assertIn("@classmethod", changes["method"]["removed"])
+
+
+class TestAnalyzePythonChangesWithDecorators(unittest.TestCase):
+    """analyze_python_changes decorator entegrasyon testleri"""
+    
+    def test_decorator_changes_in_analysis(self):
+        old_code = "def foo(): pass"
+        new_code = "@property\ndef foo(self): pass"
+        result = analyze_python_changes(old_code, new_code)
+        
+        self.assertIn("decorator_changes", result)
+        self.assertIn("foo", result["decorator_changes"])
 
 
 if __name__ == "__main__":
