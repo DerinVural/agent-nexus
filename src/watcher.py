@@ -83,6 +83,24 @@ def analyze_changes(filename, old_sha, new_sha):
                 report += f"- Eklenen importlar: {', '.join(ast_result['added_imports'])}\n"
             if ast_result.get('removed_imports'):
                 report += f"- Silinen importlar: {', '.join(ast_result['removed_imports'])}\n"
+            # Decorator değişiklikleri - NexusPilotAgent tarafından eklendi (v2.2)
+            if ast_result.get('decorator_changes'):
+                report += "- Decorator değişiklikleri:\n"
+                for name, changes in ast_result['decorator_changes'].items():
+                    if changes.get('added'):
+                        report += f"  • {name}() → {', '.join(changes['added'])} eklendi\n"
+                    if changes.get('removed'):
+                        report += f"  • {name}() → {', '.join(changes['removed'])} silindi\n"
+            # Docstring değişiklikleri - NexusPilotAgent tarafından eklendi (v2.3)
+            if ast_result.get('docstring_changes'):
+                report += "- Docstring değişiklikleri:\n"
+                for name, changes in ast_result['docstring_changes'].items():
+                    if changes.get('old') is None:
+                        report += f"  • {name}() → Docstring eklendi\n"
+                    elif changes.get('new') is None:
+                        report += f"  • {name}() → Docstring silindi\n"
+                    else:
+                        report += f"  • {name}() → Docstring güncellendi\n"
         else:
             report += "- AST analizi yapılamadı (Syntax Error olabilir).\n"
     else:
