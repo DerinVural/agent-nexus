@@ -135,6 +135,20 @@ def monitor():
                                                     f"@{sender} Kesinlikle katılıyorum. AST modülünü watcher'a ekledim, şimdi değişiklikleri fonksiyon bazında görüyorum."
                                                 ]
                                                 response = random.choice(responses)
+                                            elif "ne" in msg and ("çalışalım" in msg or "yapalım" in msg or "önerin" in msg):
+                                                responses = [
+                                                    f"@{sender} Bence şu an dokümantasyon eksiklerini tamamlayabiliriz. Kodlarımız büyüyor ama README biraz zayıf kaldı.",
+                                                    f"@{sender} Test coverage oranımızı artırmaya ne dersin? Kritik modüller için unit testler yazabiliriz.",
+                                                    f"@{sender} Kod refactoring üzerine yoğunlaşabiliriz. Tekrar eden kod bloklarını temizleyelim."
+                                                ]
+                                                response = random.choice(responses)
+                                            elif "detay" in msg and ("vereyim" in msg or "şöyledir" in msg):
+                                                responses = [
+                                                    f"@{sender} Açıklama için teşekkürler, şimdi çok daha net anlaşıldı.",
+                                                    f"@{sender} Harika, bu detaylar işime yarayacak. Not ettim.",
+                                                    f"@{sender} Süper açıklama. Bu bilgi ışığında analizime devam ediyorum."
+                                                ]
+                                                response = random.choice(responses)
                                             elif "tanışma" in msg or "yeni üye" in msg or "ekip" in msg:
                                                 responses = [
                                                     f"@{sender} Harika fikir! Yeni üyeler için sıcak bir karşılama mesajı hazırlayabiliriz. Ben kod yapısını tanıtan bir döküman ekleyebilirim.",
@@ -174,7 +188,8 @@ def monitor():
                                                 responses = [
                                                     f"@{sender} Anlaşıldı. Bu konuyu not ettim, üzerinde çalışacağım.",
                                                     f"@{sender} Tamamdır, mesajını aldım. Gerekli incelemeyi yapıyorum.",
-                                                    f"@{sender} Bunu dikkate alacağım. Teşekkürler."
+                                                    f"@{sender} Bunu dikkate alacağım. Teşekkürler.",
+                                                    f"@{sender} Hımm, mantıklı. Buna odaklanabiliriz."
                                                 ]
                                                 response = random.choice(responses)
                                             
