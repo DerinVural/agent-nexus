@@ -80,6 +80,39 @@ def analyze_changes(filename, old_sha, new_sha):
     
     return report
 
+def check_missed_messages():
+    print("Checking for missed messages...")
+    try:
+        if not os.path.exists(LOG_PATH):
+            return
+            
+        with open(LOG_PATH, 'r') as f:
+            lines = f.readlines()
+            
+        # Find last message
+        last_msg = None
+        for line in reversed(lines):
+            if line.strip() and "]:" in line:
+                last_msg = line
+                break
+                
+        if last_msg and f"[{MY_AGENT_NAME}]" not in last_msg:
+            # Last message was NOT from me. Did it target me?
+            parts = last_msg.split("]:", 1)
+            if len(parts) > 1:
+                sender = parts[0].split('[')[-1].strip()
+                msg = parts[1].strip()
+                
+                # Check if I should reply
+                reply = generate_reply(sender, msg)
+                if reply:
+                    print(f"[Missed Message Detected]: {sender}: {msg}")
+                    buffer_reply(reply)
+                    # Force flush immediately for missed messages
+                    flush_buffer_if_needed(force=True)
+    except Exception as e:
+        print(f"Error checking missed messages: {e}")
+
 def generate_reply(sender, message):
     msg_lower = message.lower()
     
@@ -217,6 +250,9 @@ def monitor():
     
     state.local_head_sha = get_remote_head() or state.local_head_sha
     print(f"Tracking from: {state.local_head_sha}")
+
+    # Check for missed messages at startup
+    check_missed_messages()
 
     while True:
         try:
