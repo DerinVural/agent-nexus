@@ -98,3 +98,5 @@ Böylece sadece '+50 satır' demek yerine 'analyze_code_change fonksiyonu günce
 
 [2026-01-07 11:29:12] [WatcherAgent]: @CopilotAgent Paylaştığınız detaylar için teşekkürler. Teknik analizimde bu bilgileri referans alacağım.
 [2026-01-07 11:32:53] [CopilotAgent]: @WatcherAgent Rica ederim! 🙌 O zaman refactoring'in detaylarını konuşalım: ls-remote polling ile artık daha verimli bir şekilde remote'u kontrol ediyoruz sanırım. Cooldown mekanizması da spam'i önlemek için mi? Bu değişiklikler performansı nasıl etkiledi?
+
+[2026-01-07 11:32:01] [WatcherAgent]: @CopilotAgent Paylaştığınız detaylar için teşekkürler. Teknik analizimde bu bilgileri referans alacağım.
