@@ -15,6 +15,11 @@ Bu modül kod değişikliklerini AST seviyesinde analiz eder.
 - Decorator analizi eklendi (@property, @staticmethod, @classmethod vb.)
 - get_decorator_changes() fonksiyonu eklendi
 - analyze_python_changes() artık decorator_changes içeriyor
+
+🔧 OpusAgent tarafından genişletildi (v2.3):
+- Docstring analizi eklendi
+- get_docstring_changes() fonksiyonu eklendi
+- analyze_python_changes() artık docstring_changes içeriyor
 """
 import ast
 from typing import Dict, List, Set, Optional, Any
@@ -124,6 +129,59 @@ def get_decorator_changes(old_tree: ast.AST, new_tree: ast.AST) -> Dict[str, Dic
     return decorator_changes
 
 
+def _extract_docstrings(tree: ast.AST) -> Dict[str, Optional[str]]:
+    """
+    Fonksiyon, class ve modül başına docstring döndürür.
+    OpusAgent tarafından eklendi (v2.3).
+    
+    Returns: {"func_name": "Docstring içeriği", ...}
+    """
+    docstrings = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            docstring = ast.get_docstring(node)
+            if docstring:
+                docstrings[node.name] = docstring
+        elif isinstance(node, ast.Module):
+            docstring = ast.get_docstring(node)
+            if docstring:
+                docstrings["__module__"] = docstring
+    return docstrings
+
+
+def get_docstring_changes(old_tree: ast.AST, new_tree: ast.AST) -> Dict[str, Dict[str, Optional[str]]]:
+    """
+    Fonksiyon/class bazlı docstring değişikliklerini döndürür.
+    OpusAgent tarafından eklendi (v2.3).
+    
+    Returns: {"func_name": {"old": "Eski docstring", "new": "Yeni docstring"}}
+    
+    Örnek:
+        old_code: def foo(): pass
+        new_code: def foo():
+                    '''Yeni docstring'''
+                    pass
+        result: {"foo": {"old": None, "new": "Yeni docstring"}}
+    """
+    old_docs = _extract_docstrings(old_tree)
+    new_docs = _extract_docstrings(new_tree)
+    
+    all_names = set(old_docs.keys()) | set(new_docs.keys())
+    docstring_changes = {}
+    
+    for name in all_names:
+        old_doc = old_docs.get(name)
+        new_doc = new_docs.get(name)
+        
+        if old_doc != new_doc:
+            docstring_changes[name] = {
+                "old": old_doc,
+                "new": new_doc
+            }
+    
+    return docstring_changes
+
+
 def get_class_method_changes(old_tree: ast.AST, new_tree: ast.AST) -> Dict[str, Dict[str, List[str]]]:
     """
     Her class için method değişikliklerini döndürür.
@@ -182,6 +240,9 @@ def analyze_python_changes(old_code: str, new_code: str) -> Optional[Dict[str, A
         # Decorator değişiklikleri - NexusPilotAgent tarafından eklendi (v2.2)
         decorator_changes = get_decorator_changes(old_tree, new_tree)
         
+        # Docstring değişiklikleri - OpusAgent tarafından eklendi (v2.3)
+        docstring_changes = get_docstring_changes(old_tree, new_tree)
+        
         return {
             # Fonksiyonlar
             "added_functions": list(new_funcs - old_funcs),
@@ -195,6 +256,8 @@ def analyze_python_changes(old_code: str, new_code: str) -> Optional[Dict[str, A
             "method_changes": method_changes,
             # Decorator Değişiklikleri - NexusPilotAgent (v2.2)
             "decorator_changes": decorator_changes,
+            # Docstring Değişiklikleri - OpusAgent (v2.3)
+            "docstring_changes": docstring_changes,
             # Importlar
             "added_imports": list(new_imports - old_imports),
             "removed_imports": list(old_imports - new_imports),
@@ -213,6 +276,7 @@ def get_code_summary(code: str) -> Optional[Dict[str, Any]]:
             "class_methods": {k: list(v) for k, v in _extract_class_methods(tree).items()},
             "imports": list(_extract_imports(tree)),
             "decorators": _extract_decorators(tree),  # NexusPilotAgent tarafından eklendi
+            "docstrings": _extract_docstrings(tree),  # OpusAgent tarafından eklendi (v2.3)
         }
     except SyntaxError:
         return None
