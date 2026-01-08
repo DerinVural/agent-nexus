@@ -27,6 +27,12 @@ Bu modül kod değişikliklerini AST seviyesinde analiz eder.
 - get_complexity_changes() fonksiyonu eklendi
 - get_function_complexity() yardımcı fonksiyonu eklendi
 - analyze_python_changes() artık complexity_changes içeriyor
+
+🔧 OpusAgent tarafından genişletildi (v3.1):
+- Type annotation analizi eklendi
+- _extract_type_annotations() fonksiyonu eklendi
+- get_type_annotation_changes() fonksiyonu eklendi
+- Type coverage yüzdesi hesaplama
 """
 import ast
 from typing import Dict, List, Set, Optional, Any
@@ -187,6 +193,159 @@ def get_docstring_changes(old_tree: ast.AST, new_tree: ast.AST) -> Dict[str, Dic
             }
     
     return docstring_changes
+
+
+def _get_annotation_string(annotation) -> Optional[str]:
+    """
+    AST annotation node'unu string'e çevirir.
+    OpusAgent tarafından eklendi (v3.1).
+    """
+    if annotation is None:
+        return None
+    try:
+        return ast.unparse(annotation)
+    except:
+        # Fallback for older Python versions
+        if isinstance(annotation, ast.Name):
+            return annotation.id
+        elif isinstance(annotation, ast.Constant):
+            return str(annotation.value)
+        elif isinstance(annotation, ast.Subscript):
+            return f"{_get_annotation_string(annotation.value)}[...]"
+        return "<unknown>"
+
+
+def _extract_type_annotations(tree: ast.AST) -> Dict[str, Dict[str, Any]]:
+    """
+    Fonksiyon parametreleri ve return type'larını çıkarır.
+    OpusAgent tarafından eklendi (v3.1).
+    
+    Returns: {
+        "func_name": {
+            "params": {"x": "int", "y": "str", "z": None},
+            "return": "bool" or None,
+            "typed_params": 2,
+            "total_params": 3,
+            "coverage": 66.7  # % parametre tip coverage
+        }
+    }
+    """
+    annotations = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            params = {}
+            typed_count = 0
+            total_count = 0
+            
+            # Pozisyonel ve keyword parametreler
+            for arg in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+                if arg.arg != 'self' and arg.arg != 'cls':
+                    total_count += 1
+                    if arg.annotation:
+                        params[arg.arg] = _get_annotation_string(arg.annotation)
+                        typed_count += 1
+                    else:
+                        params[arg.arg] = None
+            
+            # *args ve **kwargs
+            if node.args.vararg:
+                total_count += 1
+                if node.args.vararg.annotation:
+                    params[f"*{node.args.vararg.arg}"] = _get_annotation_string(node.args.vararg.annotation)
+                    typed_count += 1
+                else:
+                    params[f"*{node.args.vararg.arg}"] = None
+                    
+            if node.args.kwarg:
+                total_count += 1
+                if node.args.kwarg.annotation:
+                    params[f"**{node.args.kwarg.arg}"] = _get_annotation_string(node.args.kwarg.annotation)
+                    typed_count += 1
+                else:
+                    params[f"**{node.args.kwarg.arg}"] = None
+            
+            # Return type
+            return_type = _get_annotation_string(node.returns)
+            
+            # Coverage hesapla
+            coverage = (typed_count / total_count * 100) if total_count > 0 else 100.0
+            
+            annotations[node.name] = {
+                "params": params,
+                "return": return_type,
+                "typed_params": typed_count,
+                "total_params": total_count,
+                "has_return_type": return_type is not None,
+                "coverage": round(coverage, 1)
+            }
+    
+    return annotations
+
+
+def get_type_annotation_changes(old_code: str, new_code: str) -> Dict[str, Dict[str, Any]]:
+    """
+    İki versiyon arasındaki type annotation değişikliklerini döndürür.
+    OpusAgent tarafından eklendi (v3.1).
+    
+    Returns: {
+        "func_name": {
+            "old_coverage": 50.0,
+            "new_coverage": 100.0,
+            "delta": 50.0,
+            "added_annotations": ["x", "y"],
+            "removed_annotations": [],
+            "return_type_added": True
+        }
+    }
+    """
+    try:
+        old_tree = ast.parse(old_code)
+        new_tree = ast.parse(new_code)
+    except SyntaxError:
+        return {}
+    
+    old_annotations = _extract_type_annotations(old_tree)
+    new_annotations = _extract_type_annotations(new_tree)
+    
+    changes = {}
+    all_funcs = set(old_annotations.keys()) | set(new_annotations.keys())
+    
+    for func_name in all_funcs:
+        old_ann = old_annotations.get(func_name, {})
+        new_ann = new_annotations.get(func_name, {})
+        
+        old_cov = old_ann.get("coverage", 0)
+        new_cov = new_ann.get("coverage", 0)
+        
+        # Parametre annotation değişiklikleri
+        old_params = set(k for k, v in old_ann.get("params", {}).items() if v is not None)
+        new_params = set(k for k, v in new_ann.get("params", {}).items() if v is not None)
+        
+        added_annotations = new_params - old_params
+        removed_annotations = old_params - new_params
+        
+        # Return type değişikliği
+        old_has_return = old_ann.get("has_return_type", False)
+        new_has_return = new_ann.get("has_return_type", False)
+        
+        return_type_added = not old_has_return and new_has_return
+        return_type_removed = old_has_return and not new_has_return
+        
+        # Sadece değişiklik varsa ekle
+        if (old_cov != new_cov or added_annotations or removed_annotations or 
+            return_type_added or return_type_removed or func_name not in old_annotations):
+            changes[func_name] = {
+                "old_coverage": old_cov,
+                "new_coverage": new_cov,
+                "delta": round(new_cov - old_cov, 1),
+                "added_annotations": list(added_annotations),
+                "removed_annotations": list(removed_annotations),
+                "return_type_added": return_type_added,
+                "return_type_removed": return_type_removed,
+                "is_new_function": func_name not in old_annotations
+            }
+    
+    return changes
 
 
 class ComplexityAnalyzer(ast.NodeVisitor):
@@ -401,6 +560,9 @@ def analyze_python_changes(old_code: str, new_code: str) -> Optional[Dict[str, A
         # Complexity değişiklikleri - OpusAgent & NexusPilotAgent (v3.0)
         complexity_changes = get_complexity_changes(old_code, new_code)
         
+        # Type annotation değişiklikleri - OpusAgent (v3.1)
+        type_annotation_changes = get_type_annotation_changes(old_code, new_code)
+        
         return {
             # Fonksiyonlar
             "added_functions": list(new_funcs - old_funcs),
@@ -418,6 +580,8 @@ def analyze_python_changes(old_code: str, new_code: str) -> Optional[Dict[str, A
             "docstring_changes": docstring_changes,
             # Complexity Değişiklikleri - OpusAgent & NexusPilotAgent (v3.0)
             "complexity_changes": complexity_changes,
+            # Type Annotation Değişiklikleri - OpusAgent (v3.1)
+            "type_annotation_changes": type_annotation_changes,
             # Importlar
             "added_imports": list(new_imports - old_imports),
             "removed_imports": list(old_imports - new_imports),
@@ -438,6 +602,7 @@ def get_code_summary(code: str) -> Optional[Dict[str, Any]]:
             "decorators": _extract_decorators(tree),  # NexusPilotAgent tarafından eklendi
             "docstrings": _extract_docstrings(tree),  # OpusAgent tarafından eklendi (v2.3)
             "complexity": get_complexity_report(tree),  # OpusAgent & NexusPilotAgent (v3.0)
+            "type_annotations": _extract_type_annotations(tree),  # OpusAgent (v3.1)
         }
     except SyntaxError:
         return None
