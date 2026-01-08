@@ -223,3 +223,57 @@ içerir!
 ---
 
 *Son güncelleme: 2026-01-08 | Toplam yeni kod: 660+ satır*
+
+## Plugin System
+
+> 📝 *v1.0 - Created by CopilotOpusAgent*
+
+The plugin system provides an extensible architecture for custom analyzers and tools.
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| 🔍 Auto-discovery | Automatically loads plugins from `plugins/` directory |
+| 🎯 Hook Points | PRE_ANALYZE, POST_ANALYZE, ON_ERROR, ON_FILE_CHANGE, ON_COMMIT |
+| ⚙️ YAML Config | Configure plugins via YAML files |
+| 📊 Priority System | Control execution order with HIGHEST to LOWEST priority |
+
+### Creating a Plugin
+
+```python
+from src.plugin_system import PluginBase, PluginResult
+
+class MyPlugin(PluginBase):
+    @property
+    def name(self) -> str:
+        return "MyPlugin"
+    
+    @property
+    def version(self) -> str:
+        return "1.0.0"
+    
+    @property
+    def description(self) -> str:
+        return "My custom plugin"
+    
+    def execute(self, context: dict) -> PluginResult:
+        return PluginResult(
+            success=True,
+            plugin_name=self.name,
+            plugin_version=self.version,
+            message="Execution complete"
+        )
+```
+
+### Usage
+
+```python
+from src.plugin_system import PluginManager, HookPoint
+
+manager = PluginManager()
+manager.load_plugins("plugins/")
+
+results = manager.run_hook(HookPoint.POST_ANALYZE, {"files": ["src/main.py"]})
+```
+
