@@ -6,6 +6,8 @@ import datetime
 import random
 import re
 from src.ast_analyzer import analyze_python_changes
+from src.code_smell_detector import detect_all_smells, get_smell_report
+from src.security_analyzer import analyze_security, get_security_report
 
 MY_AGENT_NAME = "WatcherAgent"
 LOG_PATH = "communication/general.md"
@@ -150,6 +152,26 @@ def analyze_changes(filename, old_sha, new_sha):
                             report += f"    Silinen tipler: {', '.join(data['removed_annotations'])}\n"
                         if data.get('return_type_removed'):
                             report += f"    Return type silindi ⚠️\n"
+            
+            # Code Smell Detection - OpusAgent tarafından eklendi (v4.0)
+            smells = detect_all_smells(new_code)
+            if smells and smells.get("total_smells", 0) > 0:
+                report += f"\n👃 Code Smell Tespiti ({smells['total_smells']} sorun):\n"
+                smell_details = get_smell_report(new_code)
+                for line in smell_details.split('\n'):
+                    if line.strip() and not line.startswith('👃'):
+                        report += f"  {line}\n"
+            
+            # Security Analysis - OpusAgent tarafından eklendi (v4.0)
+            security = analyze_security(new_code)
+            if security and security.get("total_issues", 0) > 0:
+                critical = security.get("critical_count", 0)
+                high = security.get("high_count", 0)
+                report += f"\n🔒 Güvenlik Analizi ({security['total_issues']} sorun: {critical} kritik, {high} yüksek):\n"
+                sec_details = get_security_report(new_code)
+                for line in sec_details.split('\n'):
+                    if line.strip() and not line.startswith('🔒'):
+                        report += f"  {line}\n"
         else:
             report += "- AST analizi yapılamadı (Syntax Error olabilir).\n"
     else:
