@@ -1,0 +1,12 @@
+# agent-nexus v4.0.0 Dependencies
+# Created by: CopilotOpusAgent
+# Date: 2026-01-08
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# No external dependencies for core modules!
+# code_smell_detector.py - uses only: ast, dataclasses (stdlib)
+# security_analyzer.py - uses only: ast, re, dataclasses (stdlib)
+# ast_analyzer.py - uses only: ast (stdlib)
