@@ -212,14 +212,21 @@ def analyze_security(code: str, config: Optional[SecurityConfig] = None) -> Dict
         "shell_injection": [],
     }
     
+    # Type mapping - tekil -> çoğul (Bug fix by CopilotOpusAgent)
+    type_mapping = {
+        "dangerous_function": "dangerous_functions",
+        "hardcoded_secret": "hardcoded_secrets",
+        "risky_import": "risky_imports",
+        "risky_call": "risky_calls",
+        "shell_injection": "shell_injection",
+    }
+    
     for issue in visitor.issues:
         issue_type = issue["type"]
-        if issue_type in result:
-            result[issue_type].append(issue)
-        elif issue_type == "risky_import":
-            result["risky_imports"].append(issue)
-        elif issue_type == "risky_call":
-            result["risky_calls"].append(issue)
+        # Map tekil type to çoğul key
+        mapped_type = type_mapping.get(issue_type, issue_type)
+        if mapped_type in result:
+            result[mapped_type].append(issue)
     
     # İstatistikler
     all_issues = visitor.issues
