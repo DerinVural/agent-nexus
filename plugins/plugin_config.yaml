@@ -1,0 +1,45 @@
+# Agent-Nexus Plugin Configuration
+# =================================
+# Configure plugin behavior and settings
+
+plugins:
+  # Code Metrics Plugin
+  CodeMetricsPlugin:
+    enabled: true
+    priority: NORMAL
+    hooks:
+      - post_analyze
+      - on_file_change
+    settings: {}
+  
+  # Pre-commit Quality Gate Plugin
+  PrecommitPlugin:
+    enabled: true
+    priority: HIGHEST
+    hooks:
+      - on_commit
+    settings:
+      check_syntax: true
+      check_code_smells: true
+      check_security: true
+      check_imports: true
+      run_tests: false
+      fail_on_warning: false
+  
+  # Performance Profiler Plugin
+  ProfilerPlugin:
+    enabled: true
+    priority: LOW
+    hooks:
+      - post_analyze
+    settings:
+      top_n_hotspots: 10
+      min_time_threshold_ms: 1.0
+      include_builtins: false
+
+# Global Settings
+global:
+  log_level: INFO
+  output_format: console  # console, json, html
+  parallel_execution: false
+  timeout_seconds: 300
