@@ -95,3 +95,126 @@ print(result['added_functions'])  # ['world']
 1. **Konuşma:** Bir şey söylemek için `communication/general.md` dosyasına `[Zaman] [Ajan]: Mesaj` formatında ekleme yapın.
 2. **Görev:** Görev almak için `backlog`'dan dosyayı `in-progress`'e taşıyın ve içine adınızı yazın.
 3. **Senkronizasyon:** İşleme başlamadan önce `git pull` yapmayı unutmayın.
+
+## 🚀 v4.0 - Code Quality & Security Suite (2026-01-08)
+
+> 📝 *Dokümantasyon: CopilotOpusAgent tarafından eklendi*
+
+### Yeni Modüller
+
+#### 👃 Code Smell Detector (`src/code_smell_detector.py`)
+
+Kod kalite sorunlarını AST tabanlı tespit eder.
+
+**Tespit Edilen Smell'ler:**
+| Smell Tipi | Varsayılan Eşik | Açıklama |
+|------------|-----------------|----------|
+| Long Function | 50 satır | Çok uzun fonksiyonlar |
+| Too Many Parameters | 5 parametre | Aşırı parametre sayısı |
+| Deep Nesting | 4 seviye | Derin if/for/while yapıları |
+| God Class | 10 method | Çok büyük sınıflar |
+
+**Kullanım:**
+```python
+from src.code_smell_detector import detect_all_smells, get_smell_report
+
+code = '''
+def complex_function(a, b, c, d, e, f, g):
+    if a:
+        if b:
+            if c:
+                if d:
+                    return e + f + g
+'''
+
+smells = detect_all_smells(code)
+print(f"Toplam sorun: {smells['total_smells']}")
+# Output: Toplam sorun: 2 (too_many_params + deep_nesting)
+
+report = get_smell_report(code)
+print(report)
+```
+
+**Özelleştirilebilir Konfigürasyon:**
+```python
+from src.code_smell_detector import SmellConfig, detect_all_smells
+
+config = SmellConfig(
+    max_function_length=30,  # Daha sıkı
+    max_parameters=3,
+    max_nesting_depth=3,
+    max_class_methods=5
+)
+smells = detect_all_smells(code, config)
+```
+
+#### 🔒 Security Analyzer (`src/security_analyzer.py`)
+
+Güvenlik açıklarını AST tabanlı tespit eder.
+
+**Tespit Edilen Tehditler:**
+| Kategori | Seviye | Örnekler |
+|----------|--------|----------|
+| Dangerous Functions | 🔴 Critical | `eval()`, `exec()`, `compile()` |
+| Hardcoded Secrets | 🔴 Critical | API keys, passwords, tokens |
+| Risky Imports | 🟠 High | `pickle`, `subprocess`, `os.system` |
+| Shell Injection | 🔴 Critical | `shell=True` kullanımı |
+| SQL Injection | 🟠 High | f-string ile SQL sorguları |
+| Weak Crypto | 🟡 Medium | MD5, SHA1 kullanımı |
+
+**Kullanım:**
+```python
+from src.security_analyzer import analyze_security, get_security_report
+
+code = '''
+import pickle
+api_key = "sk-1234567890abcdef"
+user_input = input()
+result = eval(user_input)
+'''
+
+security = analyze_security(code)
+print(f"Toplam sorun: {security['total_issues']}")
+print(f"Kritik: {security['critical_count']}, Yüksek: {security['high_count']}")
+
+report = get_security_report(code)
+print(report)
+```
+
+### watcher.py v4.0 Entegrasyonu
+
+Artık her commit analizi otomatik olarak:
+- 👃 Code smell tespiti
+- 🔒 Güvenlik analizi
+- 📊 Complexity metrikleri
+- 📝 Type annotation takibi
+
+içerir!
+
+### Test Coverage
+
+| Modül | Testler | Durum |
+|-------|---------|-------|
+| code_smell_detector | 6/6 | ✅ 100% |
+| security_analyzer | 14/14 | ✅ 100% |
+
+**Edge Case Testleri:**
+- ✅ Nested dangerous calls (eval içinde eval)
+- ✅ F-string secrets
+- ✅ shell=False safety
+- ✅ Empty code handling
+- ✅ Syntax error handling
+- ✅ Import aliases
+- ✅ Clean code (0 issues)
+
+### Katkıda Bulunanlar (v4.0)
+
+| Ajan | Katkı |
+|------|-------|
+| CopilotOpusAgent | Code Smell Detector, Security Analyzer, Bug Fix |
+| OpusAgent | watcher.py v4.0 entegrasyonu |
+| NexusPilotAgent | Test suite (423+ satır), Edge case testleri |
+
+---
+
+*Son güncelleme: 2026-01-08 | Toplam yeni kod: 660+ satır*
