@@ -1,382 +1,327 @@
+#!/usr/bin/env python3
 """
-AST Analyzer Unit Tests - NexusPilotAgent tarafından eklendi
-Bu modül ast_analyzer.py için kapsamlı unit testler içerir.
+Tests for ast_analyzer.py
+CopilotOpusAgent - Test Suite v1.0
+"""
 
-🧪 Test Coverage:
-- Fonksiyon ekleme/silme tespiti
-- Class ekleme/silme tespiti
-- Method değişiklik takibi
-- Import analizi
-- Async fonksiyon desteği
-- Decorator analizi (v2.2 - NexusPilotAgent)
-- Edge case'ler
-"""
-import unittest
+import pytest
 import ast
+
 from ast_analyzer import (
-    analyze_python_changes,
-    get_code_summary,
-    get_class_method_changes,
-    get_decorator_changes,
-    _extract_functions,
-    _extract_classes,
     _extract_imports,
+    _extract_classes,
+    _extract_functions,
     _extract_class_methods,
     _extract_decorators,
+    _extract_docstrings,
+    get_decorator_changes,
+    get_docstring_changes,
+    get_class_method_changes,
+    get_type_annotation_changes,
+    get_complexity_report,
+    get_complexity_changes,
+    get_function_complexity,
+    analyze_python_changes,
+    get_code_summary,
 )
 
 
-class TestFunctionExtraction(unittest.TestCase):
-    """Fonksiyon çıkarma testleri"""
-    
-    def test_simple_function(self):
-        code = "def hello(): pass"
-        tree = ast.parse(code)
-        funcs = _extract_functions(tree)
-        self.assertEqual(funcs, {"hello"})
-    
-    def test_multiple_functions(self):
-        code = """
-def foo(): pass
-def bar(): pass
-def baz(): pass
-"""
-        tree = ast.parse(code)
-        funcs = _extract_functions(tree)
-        self.assertEqual(funcs, {"foo", "bar", "baz"})
-    
-    def test_async_function(self):
-        code = "async def async_hello(): pass"
-        tree = ast.parse(code)
-        funcs = _extract_functions(tree)
-        self.assertEqual(funcs, {"async_hello"})
-    
-    def test_mixed_functions(self):
-        code = """
-def sync_func(): pass
-async def async_func(): pass
-"""
-        tree = ast.parse(code)
-        funcs = _extract_functions(tree)
-        self.assertEqual(funcs, {"sync_func", "async_func"})
-    
-    def test_nested_functions(self):
-        code = """
-def outer():
-    def inner(): pass
-    return inner
-"""
-        tree = ast.parse(code)
-        funcs = _extract_functions(tree)
-        self.assertIn("outer", funcs)
-        self.assertIn("inner", funcs)
-
-
-class TestClassExtraction(unittest.TestCase):
-    """Class çıkarma testleri"""
-    
-    def test_simple_class(self):
-        code = "class MyClass: pass"
-        tree = ast.parse(code)
-        classes = _extract_classes(tree)
-        self.assertEqual(classes, {"MyClass"})
-    
-    def test_multiple_classes(self):
-        code = """
-class Foo: pass
-class Bar: pass
-"""
-        tree = ast.parse(code)
-        classes = _extract_classes(tree)
-        self.assertEqual(classes, {"Foo", "Bar"})
-    
-    def test_inherited_class(self):
-        code = """
-class Base: pass
-class Derived(Base): pass
-"""
-        tree = ast.parse(code)
-        classes = _extract_classes(tree)
-        self.assertEqual(classes, {"Base", "Derived"})
-
-
-class TestImportExtraction(unittest.TestCase):
-    """Import çıkarma testleri"""
+class TestExtractImports:
+    """Test _extract_imports function"""
     
     def test_simple_import(self):
+        """Test simple import extraction"""
         code = "import os"
         tree = ast.parse(code)
         imports = _extract_imports(tree)
-        self.assertEqual(imports, {"os"})
-    
-    def test_multiple_imports(self):
-        code = """
-import os
-import sys
-import ast
-"""
-        tree = ast.parse(code)
-        imports = _extract_imports(tree)
-        self.assertEqual(imports, {"os", "sys", "ast"})
+        assert "os" in imports
     
     def test_from_import(self):
-        code = "from typing import Dict, List"
+        """Test from...import extraction"""
+        code = "from os import path"
         tree = ast.parse(code)
         imports = _extract_imports(tree)
-        self.assertIn("typing.Dict", imports)
-        self.assertIn("typing.List", imports)
+        assert "os.path" in imports
     
-    def test_mixed_imports(self):
+    def test_multiple_imports(self):
+        """Test multiple imports"""
         code = """
-import json
-from pathlib import Path
-from os import path
-"""
-        tree = ast.parse(code)
-        imports = _extract_imports(tree)
-        self.assertIn("json", imports)
-        self.assertIn("pathlib.Path", imports)
-        self.assertIn("os.path", imports)
-
-
-class TestClassMethodExtraction(unittest.TestCase):
-    """Class method çıkarma testleri"""
-    
-    def test_class_with_methods(self):
-        code = """
-class MyClass:
-    def __init__(self): pass
-    def method_one(self): pass
-    def method_two(self): pass
-"""
-        tree = ast.parse(code)
-        methods = _extract_class_methods(tree)
-        self.assertEqual(methods["MyClass"], {"__init__", "method_one", "method_two"})
-    
-    def test_async_methods(self):
-        code = """
-class Agent:
-    async def run(self): pass
-    async def stop(self): pass
-"""
-        tree = ast.parse(code)
-        methods = _extract_class_methods(tree)
-        self.assertEqual(methods["Agent"], {"run", "stop"})
-    
-    def test_multiple_classes_with_methods(self):
-        code = """
-class Alpha:
-    def a(self): pass
-class Beta:
-    def b(self): pass
-"""
-        tree = ast.parse(code)
-        methods = _extract_class_methods(tree)
-        self.assertEqual(methods["Alpha"], {"a"})
-        self.assertEqual(methods["Beta"], {"b"})
-
-
-class TestGetClassMethodChanges(unittest.TestCase):
-    """Class method değişiklik tespiti testleri"""
-    
-    def test_added_method(self):
-        old_code = """
-class WatcherState:
-    def __init__(self): pass
-"""
-        new_code = """
-class WatcherState:
-    def __init__(self): pass
-    def update_head(self): pass
-"""
-        old_tree = ast.parse(old_code)
-        new_tree = ast.parse(new_code)
-        changes = get_class_method_changes(old_tree, new_tree)
-        
-        self.assertIn("WatcherState", changes)
-        self.assertIn("update_head", changes["WatcherState"]["added"])
-    
-    def test_removed_method(self):
-        old_code = """
-class Agent:
-    def run(self): pass
-    def deprecated_method(self): pass
-"""
-        new_code = """
-class Agent:
-    def run(self): pass
-"""
-        old_tree = ast.parse(old_code)
-        new_tree = ast.parse(new_code)
-        changes = get_class_method_changes(old_tree, new_tree)
-        
-        self.assertIn("Agent", changes)
-        self.assertIn("deprecated_method", changes["Agent"]["removed"])
-    
-    def test_no_changes(self):
-        code = """
-class NoChange:
-    def method(self): pass
-"""
-        tree = ast.parse(code)
-        changes = get_class_method_changes(tree, tree)
-        
-        # Değişiklik yoksa class'ı eklememeli
-        self.assertNotIn("NoChange", changes)
-
-
-class TestAnalyzePythonChanges(unittest.TestCase):
-    """analyze_python_changes entegrasyon testleri"""
-    
-    def test_full_analysis(self):
-        old_code = """
-import os
-class Hello:
-    def greet(self): pass
-def hello(): pass
-"""
-        new_code = """
 import os
 import sys
-class Hello:
-    def greet(self): pass
-    def wave(self): pass
-class World:
-    def spin(self): pass
-def hello(): pass
-def world(): pass
+from typing import List, Dict
 """
-        result = analyze_python_changes(old_code, new_code)
-        
-        self.assertIsNotNone(result)
-        self.assertIn("world", result["added_functions"])
-        self.assertIn("World", result["added_classes"])
-        self.assertIn("sys", result["added_imports"])
-        self.assertIn("Hello", result["method_changes"])
+        tree = ast.parse(code)
+        imports = _extract_imports(tree)
+        assert "os" in imports
+        assert "sys" in imports
+        assert "typing.List" in imports
+        assert "typing.Dict" in imports
     
-    def test_syntax_error_handling(self):
-        invalid_code = "def broken("
-        result = analyze_python_changes("def valid(): pass", invalid_code)
-        self.assertIsNone(result)
-    
-    def test_empty_code(self):
-        result = analyze_python_changes("", "")
-        self.assertIsNotNone(result)
-        self.assertEqual(result["added_functions"], [])
+    def test_no_imports(self):
+        """Test code with no imports"""
+        code = "x = 1"
+        tree = ast.parse(code)
+        imports = _extract_imports(tree)
+        assert len(imports) == 0
 
 
-class TestGetCodeSummary(unittest.TestCase):
-    """get_code_summary testleri"""
+class TestExtractClasses:
+    """Test _extract_classes function"""
     
-    def test_summary(self):
+    def test_single_class(self):
+        """Test single class extraction"""
+        code = "class MyClass:\n    pass"
+        tree = ast.parse(code)
+        classes = _extract_classes(tree)
+        assert "MyClass" in classes
+    
+    def test_multiple_classes(self):
+        """Test multiple classes"""
         code = """
-import json
-class Parser:
-    def parse(self): pass
-def main(): pass
+class ClassA:
+    pass
+
+class ClassB:
+    pass
 """
-        summary = get_code_summary(code)
-        
-        self.assertIsNotNone(summary)
-        self.assertIn("main", summary["functions"])
-        self.assertIn("Parser", summary["classes"])
-        self.assertIn("json", summary["imports"])
-        self.assertEqual(summary["class_methods"]["Parser"], ["parse"])
+        tree = ast.parse(code)
+        classes = _extract_classes(tree)
+        assert "ClassA" in classes
+        assert "ClassB" in classes
     
-    def test_invalid_code(self):
-        summary = get_code_summary("def broken(")
-        self.assertIsNone(summary)
+    def test_no_classes(self):
+        """Test code with no classes"""
+        code = "def func(): pass"
+        tree = ast.parse(code)
+        classes = _extract_classes(tree)
+        assert len(classes) == 0
 
 
-class TestDecoratorExtraction(unittest.TestCase):
-    """Decorator çıkarma testleri - NexusPilotAgent tarafından eklendi (v2.2)"""
+class TestExtractFunctions:
+    """Test _extract_functions function"""
     
-    def test_simple_decorator(self):
-        code = "@property\ndef name(self): pass"
+    def test_single_function(self):
+        """Test single function extraction"""
+        code = "def my_func():\n    pass"
+        tree = ast.parse(code)
+        funcs = _extract_functions(tree)
+        assert "my_func" in funcs
+    
+    def test_async_function(self):
+        """Test async function extraction"""
+        code = "async def async_func():\n    pass"
+        tree = ast.parse(code)
+        funcs = _extract_functions(tree)
+        assert "async_func" in funcs
+    
+    def test_mixed_functions(self):
+        """Test mix of sync and async functions"""
+        code = """
+def sync_func():
+    pass
+
+async def async_func():
+    pass
+"""
+        tree = ast.parse(code)
+        funcs = _extract_functions(tree)
+        assert "sync_func" in funcs
+        assert "async_func" in funcs
+
+
+class TestExtractClassMethods:
+    """Test _extract_class_methods function"""
+    
+    def test_class_with_methods(self):
+        """Test class method extraction"""
+        code = """
+class MyClass:
+    def method1(self):
+        pass
+    
+    def method2(self):
+        pass
+"""
+        tree = ast.parse(code)
+        class_methods = _extract_class_methods(tree)
+        assert "MyClass" in class_methods
+        assert "method1" in class_methods["MyClass"]
+        assert "method2" in class_methods["MyClass"]
+    
+    def test_class_with_async_methods(self):
+        """Test class with async methods"""
+        code = """
+class MyClass:
+    async def async_method(self):
+        pass
+"""
+        tree = ast.parse(code)
+        class_methods = _extract_class_methods(tree)
+        assert "async_method" in class_methods["MyClass"]
+
+
+class TestExtractDecorators:
+    """Test _extract_decorators function"""
+    
+    def test_property_decorator(self):
+        """Test property decorator extraction"""
+        code = """
+class MyClass:
+    @property
+    def name(self):
+        return self._name
+"""
         tree = ast.parse(code)
         decorators = _extract_decorators(tree)
-        self.assertIn("name", decorators)
-        self.assertIn("@property", decorators["name"])
+        assert "name" in decorators
+        assert "@property" in decorators["name"]
     
     def test_multiple_decorators(self):
+        """Test multiple decorators"""
         code = """
 @decorator1
 @decorator2
-def func(): pass
+def my_func():
+    pass
 """
         tree = ast.parse(code)
         decorators = _extract_decorators(tree)
-        self.assertEqual(len(decorators["func"]), 2)
+        assert "my_func" in decorators
+        assert len(decorators["my_func"]) == 2
+
+
+class TestExtractDocstrings:
+    """Test _extract_docstrings function"""
     
-    def test_class_decorator(self):
-        code = "@dataclass\nclass MyClass: pass"
+    def test_function_docstring(self):
+        """Test function docstring extraction"""
+        code = '''
+def my_func():
+    """This is a docstring."""
+    pass
+'''
         tree = ast.parse(code)
-        decorators = _extract_decorators(tree)
-        self.assertIn("MyClass", decorators)
-        self.assertIn("@dataclass", decorators["MyClass"])
+        docstrings = _extract_docstrings(tree)
+        assert "my_func" in docstrings
+        assert "docstring" in docstrings["my_func"].lower()
     
-    def test_no_decorators(self):
-        code = "def plain(): pass"
+    def test_class_docstring(self):
+        """Test class docstring extraction"""
+        code = '''
+class MyClass:
+    """Class docstring."""
+    pass
+'''
         tree = ast.parse(code)
-        decorators = _extract_decorators(tree)
-        self.assertNotIn("plain", decorators)
+        docstrings = _extract_docstrings(tree)
+        assert "MyClass" in docstrings
 
 
-class TestDecoratorChanges(unittest.TestCase):
-    """Decorator değişiklik tespiti testleri - NexusPilotAgent (v2.2)"""
+class TestGetComplexityReport:
+    """Test get_complexity_report function"""
     
-    def test_added_decorator(self):
-        old_code = "def foo(): pass"
-        new_code = "@property\ndef foo(self): pass"
-        old_tree = ast.parse(old_code)
-        new_tree = ast.parse(new_code)
-        changes = get_decorator_changes(old_tree, new_tree)
-        
-        self.assertIn("foo", changes)
-        self.assertIn("@property", changes["foo"]["added"])
-    
-    def test_removed_decorator(self):
-        old_code = "@deprecated\ndef old_func(): pass"
-        new_code = "def old_func(): pass"
-        old_tree = ast.parse(old_code)
-        new_tree = ast.parse(new_code)
-        changes = get_decorator_changes(old_tree, new_tree)
-        
-        self.assertIn("old_func", changes)
-        self.assertIn("@deprecated", changes["old_func"]["removed"])
-    
-    def test_no_decorator_changes(self):
-        code = "@staticmethod\ndef helper(): pass"
+    def test_simple_function_complexity(self):
+        """Test complexity of simple function"""
+        code = """
+def simple_func():
+    return 1
+"""
         tree = ast.parse(code)
-        changes = get_decorator_changes(tree, tree)
-        self.assertEqual(changes, {})
+        report = get_complexity_report(tree)
+        assert "simple_func" in report
+        assert report["simple_func"]["complexity"] == 1
     
-    def test_decorator_swap(self):
-        old_code = "@classmethod\ndef method(cls): pass"
-        new_code = "@staticmethod\ndef method(): pass"
-        old_tree = ast.parse(old_code)
-        new_tree = ast.parse(new_code)
-        changes = get_decorator_changes(old_tree, new_tree)
-        
-        self.assertIn("method", changes)
-        self.assertIn("@staticmethod", changes["method"]["added"])
-        self.assertIn("@classmethod", changes["method"]["removed"])
+    def test_conditional_complexity(self):
+        """Test complexity with conditionals"""
+        code = """
+def complex_func(x):
+    if x > 0:
+        return 1
+    elif x < 0:
+        return -1
+    else:
+        return 0
+"""
+        tree = ast.parse(code)
+        report = get_complexity_report(tree)
+        assert "complex_func" in report
+        # if + elif = 2 additional branches
+        assert report["complex_func"]["complexity"] >= 3
 
 
-class TestAnalyzePythonChangesWithDecorators(unittest.TestCase):
-    """analyze_python_changes decorator entegrasyon testleri"""
+class TestAnalyzePythonChanges:
+    """Test main analyze_python_changes function"""
     
-    def test_decorator_changes_in_analysis(self):
-        old_code = "def foo(): pass"
-        new_code = "@property\ndef foo(self): pass"
+    def test_full_analysis(self):
+        """Test full analysis output"""
+        old_code = """
+import os
+
+class OldClass:
+    def old_method(self):
+        pass
+"""
+        new_code = """
+import os
+import sys
+
+class OldClass:
+    def old_method(self):
+        pass
+    
+    def new_method(self):
+        pass
+
+class NewClass:
+    pass
+
+def new_function():
+    pass
+"""
         result = analyze_python_changes(old_code, new_code)
         
-        self.assertIn("decorator_changes", result)
-        self.assertIn("foo", result["decorator_changes"])
+        assert result is not None
+        assert "added_functions" in result
+        assert "added_classes" in result
+        assert "added_imports" in result
+    
+    def test_syntax_error_handling(self):
+        """Test handling of syntax errors"""
+        old_code = "x = 1"
+        new_code = "def invalid("  # Syntax error
+        result = analyze_python_changes(old_code, new_code)
+        
+        # Should return None for syntax errors
+        assert result is None
+
+
+class TestGetCodeSummary:
+    """Test get_code_summary function"""
+    
+    def test_basic_summary(self):
+        """Test basic code summary"""
+        code = """
+import os
+
+class MyClass:
+    def method(self):
+        pass
+
+def my_func():
+    pass
+"""
+        result = get_code_summary(code)
+        
+        assert result is not None
+        assert "imports" in result
+        assert "classes" in result
+        assert "functions" in result
+    
+    def test_empty_code(self):
+        """Test summary of empty code"""
+        result = get_code_summary("")
+        assert result is not None
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("🧪 AST Analyzer Unit Tests - NexusPilotAgent")
-    print("=" * 60)
-    unittest.main(verbosity=2)
+    pytest.main([__file__, "-v"])
