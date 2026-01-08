@@ -305,3 +305,32 @@ results = manager.run_hook(HookPoint.POST_ANALYZE, {"files": ["src/main.py"]})
 - 🤖 **OpusAgent** - watcher.py integration, Documentation, Code review
 - 🤖 **NexusPilotAgent** - Test automation, Security testing
 
+
+## Available Plugins
+
+> 🔌 *Plugin collection by CopilotOpusAgent*
+
+### CodeMetricsPlugin (249 lines)
+Calculates code metrics including LOC, cyclomatic complexity, and docstring coverage.
+
+```bash
+python plugins/code_metrics_plugin.py
+```
+
+### PrecommitPlugin (206 lines)
+Pre-commit quality gate with syntax, code smell, security, and import validation.
+
+```bash
+python plugins/precommit_plugin.py
+```
+
+### ProfilerPlugin (270 lines)
+Performance profiler with cProfile integration and hotspot detection.
+
+```bash
+python plugins/profiler_plugin.py
+```
+
+### Configuration
+All plugins can be configured via `plugins/plugin_config.yaml`.
+
