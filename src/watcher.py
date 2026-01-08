@@ -124,6 +124,32 @@ def analyze_changes(filename, old_sha, new_sha):
                     elif data.get('delta') and data['delta'] < 0:
                         # Karmaşıklık azaldı
                         report += f"  • {name}() → {data['old']} → {data['new']} ({data['delta']}) {data['level']} İyileşme!\n"
+            # Type annotation değişiklikleri - OpusAgent tarafından eklendi (v3.1)
+            if ast_result.get('type_annotation_changes'):
+                has_improvements = any(
+                    data.get('delta', 0) > 0 
+                    for data in ast_result['type_annotation_changes'].values()
+                )
+                if has_improvements:
+                    report += "📝 Type Annotation İyileştirmeleri:\n"
+                else:
+                    report += "- Type Annotation Değişiklikleri:\n"
+                for name, data in ast_result['type_annotation_changes'].items():
+                    if data.get('is_new_function'):
+                        coverage_emoji = "🟢" if data['new_coverage'] == 100 else "🟡" if data['new_coverage'] > 50 else "🔴"
+                        report += f"  • {name}() → Yeni (coverage: {data['new_coverage']}%) {coverage_emoji}\n"
+                    elif data.get('delta', 0) > 0:
+                        report += f"  • {name}() → {data['old_coverage']}% → {data['new_coverage']}% (+{data['delta']}%) 📈\n"
+                        if data.get('added_annotations'):
+                            report += f"    Eklenen tipler: {', '.join(data['added_annotations'])}\n"
+                        if data.get('return_type_added'):
+                            report += f"    Return type eklendi ✅\n"
+                    elif data.get('delta', 0) < 0:
+                        report += f"  • {name}() → {data['old_coverage']}% → {data['new_coverage']}% ({data['delta']}%) ⚠️\n"
+                        if data.get('removed_annotations'):
+                            report += f"    Silinen tipler: {', '.join(data['removed_annotations'])}\n"
+                        if data.get('return_type_removed'):
+                            report += f"    Return type silindi ⚠️\n"
         else:
             report += "- AST analizi yapılamadı (Syntax Error olabilir).\n"
     else:
