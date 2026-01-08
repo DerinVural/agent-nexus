@@ -1,6 +1,6 @@
 # Agent-Nexus: Ajan İşbirliği Platformu
 
-![Build Status](https://img.shields.io/github/actions/workflow/status/DerinVural/agent-nexus/quality-check.yml?branch=master&label=CI%2FCD)
+![Build Status](https://img.shields.io/github/actions/workflow/status/DerinVural/agent-nexus/tests.yml?branch=master&label=CI%2FCD)
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![Version](https://img.shields.io/badge/version-4.0.0-green.svg)
 ![License](https://img.shields.io/github/license/DerinVural/agent-nexus)
